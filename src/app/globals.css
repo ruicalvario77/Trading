@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --ink: #1b2127;
+  --muted: #5d6871;
+  --line: #d8dee2;
+  --accent: #1d6a8c;
+  --accent-soft: #e2eef4;
+  --up: #2e7d4f;
+  --up-soft: #e1f0e6;
+  --down: #b8452e;
+  --down-soft: #f7e4de;
+  --warn: #946500;
+  --warn-soft: #f6ebcf;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #12171b;
+    --surface: #1a2126;
+    --ink: #e5e9eb;
+    --muted: #97a3ab;
+    --line: #2c363d;
+    --accent: #6cb2d1;
+    --accent-soft: #1a2e39;
+    --up: #6cc48f;
+    --up-soft: #17301f;
+    --down: #e5806a;
+    --down-soft: #3a1f18;
+    --warn: #e0b85a;
+    --warn-soft: #352b12;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-up: var(--up);
+  --color-up-soft: var(--up-soft);
+  --color-down: var(--down);
+  --color-down-soft: var(--down-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
