@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import type { Settings } from "./db/schema";
 import { DEFAULT_RULES } from "./planner";
+import { ensureSchema } from "./db/migrate";
 
 /** R10,000 at roughly 18 rand per dollar. The owner adjusts both on the settings page. */
 export const DEFAULT_SETTINGS: Settings = {
@@ -23,6 +24,8 @@ export const DEFAULT_SETTINGS: Settings = {
 export async function loadSettings(): Promise<Settings> {
   const db = getDb();
   if (!db) return DEFAULT_SETTINGS;
+  // First page load on a fresh database runs before any job has created the tables.
+  await ensureSchema();
   const rows = await db.select().from(schema.settings).where(eq(schema.settings.id, 1)).limit(1);
   if (rows.length === 0) {
     await db.insert(schema.settings).values(DEFAULT_SETTINGS).onConflictDoNothing();
@@ -34,6 +37,7 @@ export async function loadSettings(): Promise<Settings> {
 export async function saveSettings(next: Omit<Settings, "id" | "updatedAt">): Promise<void> {
   const db = getDb();
   if (!db) throw new Error("DATABASE_URL is not set");
+  await ensureSchema();
   await db
     .insert(schema.settings)
     .values({ id: 1, ...next, updatedAt: new Date() })
