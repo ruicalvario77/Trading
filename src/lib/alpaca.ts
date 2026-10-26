@@ -83,3 +83,13 @@ export async function submitBracketOrder(o: BracketOrderRequest): Promise<{ id: 
   if (!res.ok) throw new Error(`Alpaca order rejected ${res.status}: ${(await res.text()).slice(0, 300)}`);
   return (await res.json()) as { id: string; status: string };
 }
+
+export async function getOrder(id: string): Promise<import("./trades").BrokerOrder> {
+  return get(`${alpacaBaseUrl()}/v2/orders/${encodeURIComponent(id)}?nested=true`);
+}
+
+export async function cancelOrder(id: string): Promise<void> {
+  const res = await fetch(`${alpacaBaseUrl()}/v2/orders/${encodeURIComponent(id)}`, { method: "DELETE", headers: headers() });
+  // 422 means the order is already filled or cancelled, which is fine here.
+  if (!res.ok && res.status !== 404 && res.status !== 422) throw new Error(`Alpaca cancel ${res.status}: ${(await res.text()).slice(0, 300)}`);
+}

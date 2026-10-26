@@ -30,8 +30,8 @@ npm run typecheck
 
 | Route | Schedule (UTC) | SAST | Does |
 |---|---|---|---|
-| `/api/cron/after-close` | 22:00 Mon to Fri | 00:00 | Sync bars, run scanner, store candidates |
-| `/api/cron/pre-open` | 13:00 Mon to Fri | 15:00 | Place bracket orders for approved candidates (milestone 3) |
+| `/api/cron/after-close` | 22:00 Mon to Fri | 00:00 | Sync order fills, sync bars, run scanner, store candidates |
+| `/api/cron/pre-open` | 13:00 Mon to Fri | 15:00 | Sync order fills, place bracket orders for approved candidates |
 
 Both accept a bearer `CRON_SECRET` from Vercel Cron or a signed-in session, so they can be run by hand from the Overview page.
 
@@ -41,6 +41,8 @@ Both accept a bearer `CRON_SECRET` from Vercel Cron or a signed-in session, so t
 src/lib/strategy/pullback.ts   setup detection, pure function
 src/lib/planner.ts             entry, stop, target, share count, pure function
 src/lib/jobs/afterClose.ts     nightly sync + scan
+src/lib/jobs/orders.ts         bracket order placement and fill sync
+src/lib/trades.ts              order reconciliation and account limits, pure functions
 src/lib/alpaca.ts              broker and data client
 src/lib/db/schema.ts           Drizzle schema
 src/lib/db/migrate.ts          idempotent CREATE TABLE statements

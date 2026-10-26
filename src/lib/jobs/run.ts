@@ -2,6 +2,8 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { runAfterClose } from "./afterClose";
+import { placeApproved, syncTrades } from "./orders";
+import { loadSettings } from "../settings";
 
 export type JobName = "after-close" | "pre-open";
 
@@ -13,8 +15,14 @@ export async function runJob(job: JobName): Promise<{ ok: boolean; summary?: unk
   const [run] = await db.insert(schema.jobRuns).values({ job }).returning({ id: schema.jobRuns.id });
   try {
     let summary: Record<string, unknown>;
-    if (job === "after-close") summary = await runAfterClose();
-    else summary = { note: "pre-open order placement arrives in milestone 3; nothing to do yet" };
+    if (job === "after-close") {
+      const sync = await syncTrades();
+      summary = { ...(await runAfterClose()), sync };
+    } else {
+      const sync = await syncTrades();
+      const place = await placeApproved(await loadSettings());
+      summary = { sync, place };
+    }
     await db.update(schema.jobRuns).set({ ok: true, finishedAt: new Date(), summary }).where(eq(schema.jobRuns.id, run.id));
     return { ok: true, summary, runId: run.id };
   } catch (e) {

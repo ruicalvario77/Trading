@@ -2,10 +2,16 @@ import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { Card, Pill, Empty, usd } from "@/components/ui";
+import { approveCandidate, setCandidateStatus } from "./actions";
+
+const STATUS_TONE: Record<string, "up" | "down" | "warn" | "accent" | "muted"> = {
+  approved: "accent", ordered: "up", rejected: "muted", expired: "muted", blocked: "warn", failed: "down",
+};
 
 export const dynamic = "force-dynamic";
 
-export default async function Candidates() {
+export default async function Candidates({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
+  const { msg } = await searchParams;
   const db = getDb();
   if (!db) return <Shell><Empty>Database not connected.</Empty></Shell>;
 
@@ -22,6 +28,7 @@ export default async function Candidates() {
 
   return (
     <Shell>
+      {msg && <div className="rounded border border-accent bg-accent-soft px-4 py-3 text-sm text-accent">{msg === "not-approvable" ? "That candidate can no longer be approved." : msg}</div>}
       <Card title={`Scan for ${scan.tradeDate}`}>
         <p className="text-sm text-muted">
           {scan.universeSize} symbols in the universe, {scan.withEnoughHistory} with enough history, {scan.passedFilters} matched the pullback setup,{" "}
@@ -36,7 +43,7 @@ export default async function Candidates() {
             <thead className="text-left text-xs uppercase tracking-wide text-muted">
               <tr>
                 <th className="px-3 py-2">Symbol</th><th className="px-3 py-2">Close</th><th className="px-3 py-2">Entry</th><th className="px-3 py-2">Stop</th>
-                <th className="px-3 py-2">Target</th><th className="px-3 py-2">Shares</th><th className="px-3 py-2">Risk</th><th className="px-3 py-2">Position</th><th className="px-3 py-2">Fit</th>
+                <th className="px-3 py-2">Target</th><th className="px-3 py-2">Shares</th><th className="px-3 py-2">Risk</th><th className="px-3 py-2">Position</th><th className="px-3 py-2">Fit</th><th className="px-3 py-2">Decision</th>
               </tr>
             </thead>
             <tbody>
@@ -58,13 +65,39 @@ export default async function Candidates() {
                       </div>
                     )}
                   </td>
+                  <td className="px-3 py-2">
+                    {c.status === "new" && c.tradeable ? (
+                      <div className="flex gap-2">
+                        <form action={approveCandidate}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <button type="submit" className="rounded bg-accent px-2.5 py-1 text-xs font-medium text-white">Approve</button>
+                        </form>
+                        <form action={setCandidateStatus}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="to" value="rejected" />
+                          <button type="submit" className="rounded border border-line px-2.5 py-1 text-xs text-muted">Skip</button>
+                        </form>
+                      </div>
+                    ) : c.status === "approved" ? (
+                      <div className="flex items-center gap-2">
+                        <Pill tone="accent">approved</Pill>
+                        <form action={setCandidateStatus}>
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="to" value="new" />
+                          <button type="submit" className="text-xs text-muted underline">undo</button>
+                        </form>
+                      </div>
+                    ) : c.status !== "new" ? (
+                      <Pill tone={STATUS_TONE[c.status] ?? "muted"}>{c.status}</Pill>
+                    ) : null}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <p className="text-xs text-muted">Approving a candidate and sending its bracket order to the paper account arrives in milestone 3.</p>
+      <p className="text-xs text-muted">Approved setups are sent as bracket orders to the paper account by the pre-open job at 15:00 SAST on weekdays. Unapproved setups expire at the next scan.</p>
     </Shell>
   );
 }

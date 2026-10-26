@@ -120,8 +120,8 @@ export async function runAfterClose(): Promise<AfterCloseSummary> {
     }
     found.sort((a, b) => Number(b.tradeable) - Number(a.tradeable) || b.score - a.score);
 
-    // Replace any earlier "new" candidates, for this date or older ones that were never acted on.
-    await db.update(schema.candidates).set({ status: "expired" }).where(eq(schema.candidates.status, "new"));
+    // Replace earlier candidates that were never acted on, including approvals the pre-open job never sent.
+    await db.update(schema.candidates).set({ status: "expired" }).where(inArray(schema.candidates.status, ["new", "approved"]));
     const [scan] = await db
       .insert(schema.scans)
       .values({ tradeDate, universeSize: active.length, withEnoughHistory, passedFilters: passedSetup, candidateCount: found.length })
