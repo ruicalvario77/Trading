@@ -31,11 +31,11 @@ export type TradePlan = {
 };
 
 export const DEFAULT_RULES: PlanRules = {
-  accountUsd: 550,
+  accountUsd: 5556, // R100,000 at 18 rand per dollar
   riskPct: 1,
-  maxPositionPct: 50,
+  maxPositionPct: 20, // five positions at 20% each uses the whole account, no margin
   minPrice: 5,
-  maxPrice: 60,
+  maxPrice: 500,
   // Measured on the free IEX feed, which carries roughly 2-3% of US volume.
   // 25,000 IEX shares a day is about 1 million shares across all exchanges.
   minAvgVolume: 25_000,
@@ -66,13 +66,19 @@ export function planTrade(x: PlanInputs, r: PlanRules): TradePlan {
   else if (stopPct < 0.01) reasons.push(`stop ${(stopPct * 100).toFixed(1)}% away, tighter than 1%`);
 
   const riskBudget = (r.accountUsd * r.riskPct) / 100;
-  const shares = riskPerShare > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
+  // Size to the stop, then trim to the position cap. A tight stop can mean fewer shares than the risk budget allows.
+  const riskShares = riskPerShare > 0 ? Math.floor(riskBudget / riskPerShare) : 0;
+  const capShares = Math.floor((r.accountUsd * r.maxPositionPct) / 100 / entry);
+  const shares = Math.max(0, Math.min(riskShares, capShares));
   const riskUsd = round2(shares * riskPerShare);
   const positionUsd = round2(shares * entry);
 
-  if (shares < 1) reasons.push(`risk budget $${riskBudget.toFixed(2)} buys 0 shares at $${riskPerShare.toFixed(2)} risk per share`);
-  if (positionUsd > (r.accountUsd * r.maxPositionPct) / 100)
-    reasons.push(`position $${positionUsd.toFixed(0)} exceeds ${r.maxPositionPct}% of account`);
+  if (shares < 1)
+    reasons.push(
+      riskShares < 1
+        ? `risk budget $${riskBudget.toFixed(2)} buys 0 shares at $${riskPerShare.toFixed(2)} risk per share`
+        : `one share costs more than the ${r.maxPositionPct}% position cap`,
+    );
 
   return { entry, stop, target, riskPerShare, shares, riskUsd, positionUsd, tradeable: reasons.length === 0, reasons };
 }

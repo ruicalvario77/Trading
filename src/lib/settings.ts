@@ -4,7 +4,7 @@ import type { Settings } from "./db/schema";
 import { DEFAULT_RULES } from "./planner";
 import { ensureSchema } from "./db/migrate";
 
-/** R10,000 at roughly 18 rand per dollar. The owner adjusts both on the settings page. */
+/** R100,000 at roughly 18 rand per dollar. The owner adjusts both on the settings page. */
 export const DEFAULT_SETTINGS: Settings = {
   id: 1,
   accountUsd: DEFAULT_RULES.accountUsd,

@@ -26,10 +26,12 @@ A systematic swing trading platform: scan after the close, plan the trade, place
 
 | Rule | Default |
 |---|---|
+| Account | R100,000 (about $5,556), paper |
 | Risk per trade | 1% of account |
 | Max open positions | 5 |
 | Weekly loss limit | 4% of account, then no new entries until Monday |
-| Universe | Price above $10, average volume above 1M shares |
+| Universe | Price $5 to $500, 20-day IEX volume above 25,000 shares (about 1M market-wide) |
+| Max position size | 20% of account |
 | Target | 2R |
 | Time stop | 10 trading days |
 
@@ -62,11 +64,13 @@ Two jobs keeps the project within the Vercel Hobby plan cron limits.
 
 ## Milestones
 
-| Milestone | Deliverable |
-|---|---|
-| 1 | Repo scaffolded, deployed to Vercel, dashboard shell, nightly bar sync |
-| 2 | Scanner live, candidates page shows tonight's setups |
-| 3 | Trade planner and bracket orders to Alpaca paper, positions page |
-| 4 | Stop management, exits, journal, stats page |
-| 5 | Backtester with walk-forward validation |
-| 6 | Six months of paper results compared to the backtest, then a decision about real capital |
+| Milestone | Deliverable | Status |
+|---|---|---|
+| 1 | Repo scaffolded, deployed to Vercel, dashboard shell, nightly bar sync | Done |
+| 2 | Scanner live, candidates page shows tonight's setups | Done |
+| 3 | Approve candidates, bracket orders to Alpaca paper, positions page | Done |
+| 4 | Backtester: same scanner and planner over history since 2016, three trade-management styles compared, results at R100,000 and R10,000 | Done |
+| 5 | Time stop live, journal with rule-compliance log, live stats compared with the backtest, plain-language reason on every candidate | Done |
+| 6 | Adopt the management style the backtest supports (breakeven or trailing stop) in live trading, only if it beats the fixed version | Next, after the first backtest |
+| 7 | Daily email briefing after each scan | Needs an email provider key from the owner |
+| 8 | At least 30 paper trades compared with the backtest, then a decision about real capital | Ongoing |

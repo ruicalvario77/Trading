@@ -1,7 +1,7 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { requireDb, schema } from "../db";
-import { cancelOrder, getOrder, submitBracketOrder } from "../alpaca";
-import { ENTRY_EXPIRY_DAYS, entryLimitFor, limitBlock, reconcileTrade, weekStartUtc } from "../trades";
+import { cancelOrder, getOrder, submitBracketOrder, submitMarketSell } from "../alpaca";
+import { ENTRY_EXPIRY_DAYS, OPEN_ORDER_STATUSES, entryLimitFor, limitBlock, reconcileExitOrder, reconcileTrade, weekStartUtc } from "../trades";
 import type { Settings } from "../db/schema";
 
 export async function weekPnl(): Promise<number> {
@@ -34,6 +34,14 @@ export async function syncTrades(): Promise<SyncSummary> {
     if (!t.brokerOrderId) continue;
     out.checked++;
     try {
+      if (t.exitOrderId) {
+        const u = reconcileExitOrder(t, await getOrder(t.exitOrderId));
+        if (u) {
+          await db.update(schema.trades).set({ ...u, updatedAt: new Date() }).where(eq(schema.trades.id, t.id));
+          if (u.status === "closed") out.closed++;
+        }
+        continue;
+      }
       let order = await getOrder(t.brokerOrderId);
       if (t.status === "pending_entry" && order.status !== "filled" && Date.now() - t.createdAt.getTime() > expiryMs) {
         await cancelOrder(t.brokerOrderId);
@@ -104,6 +112,45 @@ export async function placeApproved(settings: Settings): Promise<PlaceSummary> {
       await db.update(schema.candidates).set({ status: "failed", reasons: [...c.reasons, msg.slice(0, 200)] }).where(eq(schema.candidates.id, c.id));
       out.failed++;
       out.errors.push(`${c.symbol}: ${msg}`);
+    }
+  }
+  return out;
+}
+
+export type TimeStopSummary = { checked: number; exiting: number; errors: string[] };
+
+/**
+ * Exits open trades that have been held for the time-stop number of trading days: cancels the bracket's
+ * stop and target, then queues a market sell for the next open. Runs after the close.
+ */
+export async function applyTimeStops(settings: Settings): Promise<TimeStopSummary> {
+  const db = requireDb();
+  const open = await db.select().from(schema.trades).where(eq(schema.trades.status, "open"));
+  const out: TimeStopSummary = { checked: 0, exiting: 0, errors: [] };
+  for (const t of open) {
+    if (!t.enteredAt || !t.brokerOrderId || t.exitOrderId) continue;
+    out.checked++;
+    const entered = t.enteredAt.toISOString().slice(0, 10);
+    const [row] = await db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(schema.bars)
+      .where(and(eq(schema.bars.symbol, "SPY"), sql`${schema.bars.date} > ${entered}`));
+    if (row.n < settings.timeStopDays) continue;
+    try {
+      let order = await getOrder(t.brokerOrderId);
+      for (const leg of order.legs ?? []) if (OPEN_ORDER_STATUSES.has(leg.status)) await cancelOrder(leg.id);
+      for (let k = 0; k < 8; k++) {
+        order = await getOrder(t.brokerOrderId);
+        if (!(order.legs ?? []).some((l) => OPEN_ORDER_STATUSES.has(l.status) || l.status === "pending_cancel")) break;
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      // A stop or target filled first: the normal sync closes it.
+      if ((order.legs ?? []).some((l) => l.status === "filled")) continue;
+      const sell = await submitMarketSell(t.symbol, t.shares, `time-${t.id}-${Date.now()}`);
+      await db.update(schema.trades).set({ exitOrderId: sell.id, updatedAt: new Date() }).where(eq(schema.trades.id, t.id));
+      out.exiting++;
+    } catch (e) {
+      out.errors.push(`${t.symbol}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return out;

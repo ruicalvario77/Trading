@@ -41,6 +41,10 @@ Both accept a bearer `CRON_SECRET` from Vercel Cron or a signed-in session, so t
 src/lib/strategy/pullback.ts   setup detection, pure function
 src/lib/planner.ts             entry, stop, target, share count, pure function
 src/lib/jobs/afterClose.ts     nightly sync + scan
+src/lib/jobs/backfill.ts       history back to 2016 for backtests
+src/lib/backtest/engine.ts     day-by-day replay and portfolio simulation, pure functions
+src/lib/backtest/run.ts        loads history, runs three variants, stores results
+src/lib/stats.ts               win rate, expectancy and streaks in R
 src/lib/jobs/orders.ts         bracket order placement and fill sync
 src/lib/trades.ts              order reconciliation and account limits, pure functions
 src/lib/alpaca.ts              broker and data client

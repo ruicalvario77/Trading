@@ -13,7 +13,7 @@ export type BrokerLeg = { id: string; type: string; status: string; filled_avg_p
 export type BrokerOrder = BrokerLeg & { legs?: BrokerLeg[] | null };
 
 export type TradeUpdate = Partial<
-  Pick<Trade, "status" | "entryFill" | "enteredAt" | "exitFill" | "exitedAt" | "exitReason" | "pnlUsd" | "rMultiple">
+  Pick<Trade, "status" | "entryFill" | "enteredAt" | "exitFill" | "exitedAt" | "exitReason" | "pnlUsd" | "rMultiple" | "exitOrderId">
 >;
 
 const DEAD = new Set(["canceled", "expired", "rejected", "done_for_day", "suspended"]);
@@ -80,5 +80,27 @@ export function limitBlock(x: LimitInputs): string | null {
   if (x.committed >= x.maxPositions) return `already at the ${x.maxPositions}-position limit`;
   const limitUsd = (x.accountUsd * x.weeklyLossLimitPct) / 100;
   if (x.weekPnlUsd <= -limitUsd) return `weekly loss limit reached ($${(-x.weekPnlUsd).toFixed(2)} of $${limitUsd.toFixed(2)})`;
+  return null;
+}
+
+/** Bracket legs that are still working at the broker. */
+export const OPEN_ORDER_STATUSES = new Set(["new", "accepted", "held", "pending_new", "partially_filled", "accepted_for_bidding", "pending_replace"]);
+
+/** State of the market sell placed by the time stop. Null when nothing changed yet. */
+export function reconcileExitOrder(trade: Trade, order: BrokerLeg): TradeUpdate | null {
+  if (order.status === "filled" && order.filled_avg_price && trade.entryFill !== null) {
+    const exitFill = Number(order.filled_avg_price);
+    const initialRisk = trade.entryFill - trade.plannedStop;
+    return {
+      status: "closed",
+      exitFill,
+      exitedAt: order.filled_at ? new Date(order.filled_at) : new Date(),
+      exitReason: "time",
+      pnlUsd: round2((exitFill - trade.entryFill) * trade.shares),
+      rMultiple: initialRisk > 0 ? Math.round(((exitFill - trade.entryFill) / initialRisk) * 100) / 100 : null,
+    };
+  }
+  // The sell died, so clear it and the next nightly run tries again.
+  if (DEAD.has(order.status)) return { exitOrderId: null };
   return null;
 }

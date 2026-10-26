@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { reconcileTrade, weekStartUtc, limitBlock, entryLimitFor } from "./trades";
+import { reconcileTrade, reconcileExitOrder, weekStartUtc, limitBlock, entryLimitFor } from "./trades";
 import type { Trade } from "./db/schema";
 
 const base: Trade = {
   id: 1, candidateId: 1, symbol: "U", setup: "pullback", status: "pending_entry",
   plannedEntry: 41.77, plannedStop: 39.09, plannedTarget: 47.13, shares: 2, riskUsd: 5.36, currentStop: 39.09,
-  breakevenMoved: false, brokerOrderId: "abc", entryFill: null, enteredAt: null, exitFill: null, exitedAt: null,
+  breakevenMoved: false, brokerOrderId: "abc", exitOrderId: null, entryFill: null, enteredAt: null, exitFill: null, exitedAt: null,
   exitReason: null, pnlUsd: null, rMultiple: null, createdAt: new Date(), updatedAt: new Date(),
 };
 const leg = (type: string, status: string, px: string | null = null) => ({ id: type, type, status, filled_avg_price: px, filled_at: px ? "2026-10-28T15:00:00Z" : null });
@@ -56,4 +56,18 @@ test("limits block at max positions and at the weekly loss limit", () => {
   assert.equal(limitBlock(ok), null);
   assert.match(limitBlock({ ...ok, committed: 5 }) ?? "", /position limit/);
   assert.match(limitBlock({ ...ok, weekPnlUsd: -22 }) ?? "", /weekly loss limit/);
+});
+
+test("time-stop sell fill closes the trade", () => {
+  const open = { ...base, status: "open", entryFill: 41.77, exitOrderId: "sell1" };
+  const u = reconcileExitOrder(open, leg("market", "filled", "42.50"));
+  assert.equal(u?.status, "closed");
+  assert.equal(u?.exitReason, "time");
+  assert.equal(u?.pnlUsd, 1.46);
+});
+
+test("rejected time-stop sell is cleared for a retry", () => {
+  const open = { ...base, status: "open", entryFill: 41.77, exitOrderId: "sell1" };
+  assert.deepEqual(reconcileExitOrder(open, leg("market", "rejected")), { exitOrderId: null });
+  assert.equal(reconcileExitOrder(open, leg("market", "new")), null);
 });

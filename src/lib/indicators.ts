@@ -43,3 +43,28 @@ export function avgVolumeAt(b: OHLCV[], i: number, n: number): number | null {
 export function round2(x: number): number {
   return Math.round(x * 100) / 100;
 }
+
+/** Rolling simple average for every index. Matches smaAt. */
+export function smaSeries(values: number[], n: number): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  let s = 0;
+  for (let i = 0; i < values.length; i++) {
+    s += values[i];
+    if (i >= n) s -= values[i - n];
+    if (i >= n - 1) out[i] = s / n;
+  }
+  return out;
+}
+
+/** Rolling average true range for every index. Matches atrAt. */
+export function atrSeries(b: OHLCV[], n: number): (number | null)[] {
+  const out: (number | null)[] = new Array(b.length).fill(null);
+  const tr = (k: number) => Math.max(b[k].high - b[k].low, Math.abs(b[k].high - b[k - 1].close), Math.abs(b[k].low - b[k - 1].close));
+  let s = 0;
+  for (let i = 1; i < b.length; i++) {
+    s += tr(i);
+    if (i > n) s -= tr(i - n);
+    if (i >= n) out[i] = s / n;
+  }
+  return out;
+}

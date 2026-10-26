@@ -49,7 +49,10 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
             <tbody>
               {rows.map((c) => (
                 <tr key={c.id} className="border-t border-line align-top">
-                  <td className="num px-3 py-2 font-medium">{c.symbol}</td>
+                  <td className="px-3 py-2">
+                    <div className="num font-medium">{c.symbol}</div>
+                    {c.why && <div className="mt-1 max-w-xs text-xs text-muted">{c.why}</div>}
+                  </td>
                   <td className="num px-3 py-2">{usd(c.close)}</td>
                   <td className="num px-3 py-2">{usd(c.entry)}</td>
                   <td className="num px-3 py-2 text-down">{usd(c.stop)}</td>

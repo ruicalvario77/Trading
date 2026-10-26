@@ -67,6 +67,7 @@ export const candidates = pgTable(
     positionUsd: doublePrecision("position_usd"),
     tradeable: boolean("tradeable").notNull(),
     reasons: jsonb("reasons").$type<string[]>().notNull(),
+    why: text("why"),
     status: text("status").notNull().default("new"), // new | approved | rejected | ordered | expired
   },
   (t) => [index("candidates_trade_date_idx").on(t.tradeDate)],
@@ -86,6 +87,7 @@ export const trades = pgTable("trades", {
   currentStop: doublePrecision("current_stop").notNull(),
   breakevenMoved: boolean("breakeven_moved").notNull().default(false),
   brokerOrderId: text("broker_order_id"),
+  exitOrderId: text("exit_order_id"),
   entryFill: doublePrecision("entry_fill"),
   enteredAt: timestamp("entered_at", { withTimezone: true }),
   exitFill: doublePrecision("exit_fill"),
@@ -104,6 +106,19 @@ export const journal = pgTable("journal", {
   brokenRule: text("broken_rule"),
   note: text("note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const backtestRuns = pgTable("backtest_runs", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  params: jsonb("params").$type<Record<string, unknown>>().notNull(),
+  results: jsonb("results").$type<unknown>().notNull(),
+});
+
+export const backfills = pgTable("backfills", {
+  symbol: text("symbol").primaryKey(),
+  earliest: date("earliest"),
+  doneAt: timestamp("done_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const jobRuns = pgTable("job_runs", {

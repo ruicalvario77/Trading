@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { getDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { runAfterClose } from "./afterClose";
-import { placeApproved, syncTrades } from "./orders";
+import { applyTimeStops, placeApproved, syncTrades } from "./orders";
 import { loadSettings } from "../settings";
 
 export type JobName = "after-close" | "pre-open";
@@ -17,7 +17,9 @@ export async function runJob(job: JobName): Promise<{ ok: boolean; summary?: unk
     let summary: Record<string, unknown>;
     if (job === "after-close") {
       const sync = await syncTrades();
-      summary = { ...(await runAfterClose()), sync };
+      const scan = await runAfterClose();
+      const timeStops = await applyTimeStops(await loadSettings());
+      summary = { ...scan, sync, timeStops };
     } else {
       const sync = await syncTrades();
       const place = await placeApproved(await loadSettings());

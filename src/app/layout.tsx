@@ -12,6 +12,7 @@ const nav = [
   { href: "/candidates", label: "Candidates" },
   { href: "/positions", label: "Positions" },
   { href: "/journal", label: "Journal" },
+  { href: "/backtest", label: "Backtest" },
   { href: "/settings", label: "Settings" },
 ];
 

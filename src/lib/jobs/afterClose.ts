@@ -3,7 +3,7 @@ import { requireDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { getDailyBars } from "../alpaca";
 import { UNIVERSE } from "../universe";
-import { evaluatePullback, MIN_HISTORY } from "../strategy/pullback";
+import { evaluatePullback, explainPullback, MIN_HISTORY } from "../strategy/pullback";
 import { planTrade } from "../planner";
 import { loadSettings } from "../settings";
 import type { OHLCV } from "../indicators";
@@ -116,6 +116,7 @@ export async function runAfterClose(): Promise<AfterCloseSummary> {
         scanId: 0, tradeDate, symbol, close: setup.close, score: setup.score,
         entry: plan.entry, stop: plan.stop, target: plan.target, shares: plan.shares,
         riskUsd: plan.riskUsd, positionUsd: plan.positionUsd, tradeable: plan.tradeable, reasons: plan.reasons, status: "new",
+        why: explainPullback(setup, plan.entry, plan.stop),
       });
     }
     found.sort((a, b) => Number(b.tradeable) - Number(a.tradeable) || b.score - a.score);

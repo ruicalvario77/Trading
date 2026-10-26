@@ -105,6 +105,26 @@ const statements = [
   )
   UPDATE settings SET min_avg_volume = 25000, updated_at = now()
   WHERE min_avg_volume = 1000000 AND EXISTS (SELECT 1 FROM m)`,
+  // One-time: the owner moved the paper account from R10,000 to R100,000. Five positions at 20% each and
+  // a $500 price ceiling suit that size.
+  `WITH m AS (
+    INSERT INTO app_migrations (name) VALUES ('account_r100k') ON CONFLICT DO NOTHING RETURNING name
+  )
+  UPDATE settings SET account_usd = 5556, max_position_pct = 20, max_price = 500, updated_at = now()
+  WHERE id = 1 AND EXISTS (SELECT 1 FROM m)`,
+  `ALTER TABLE trades ADD COLUMN IF NOT EXISTS exit_order_id text`,
+  `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS why text`,
+  `CREATE TABLE IF NOT EXISTS backtest_runs (
+    id serial PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    params jsonb NOT NULL,
+    results jsonb NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS backfills (
+    symbol text PRIMARY KEY,
+    earliest date,
+    done_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,
