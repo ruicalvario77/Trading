@@ -105,13 +105,20 @@ const statements = [
   )`,
 ];
 
-let done = false;
+let pending: Promise<void> | null = null;
 
-export async function ensureSchema(): Promise<void> {
-  if (done) return;
-  const url = env("DATABASE_URL");
-  if (!url) throw new Error("DATABASE_URL is not set");
-  const sql = neon(url);
-  for (const s of statements) await sql.query(s);
-  done = true;
+/** Creates all tables once per server instance. Concurrent callers share the same run. */
+export function ensureSchema(): Promise<void> {
+  if (!pending) {
+    pending = (async () => {
+      const url = env("DATABASE_URL");
+      if (!url) throw new Error("DATABASE_URL is not set");
+      const sql = neon(url);
+      for (const s of statements) await sql.query(s);
+    })().catch((e) => {
+      pending = null;
+      throw e;
+    });
+  }
+  return pending;
 }

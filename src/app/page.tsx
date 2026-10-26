@@ -1,6 +1,7 @@
 import { desc, sql } from "drizzle-orm";
 import { setupStatus, isPaper } from "@/lib/env";
 import { getDb, schema } from "@/lib/db";
+import { ensureSchema } from "@/lib/db/migrate";
 import { alpacaConfigured, getAccount, getClock } from "@/lib/alpaca";
 import { loadSettings, zar } from "@/lib/settings";
 import { Card, Stat, Pill, Empty, usd } from "@/components/ui";
@@ -11,6 +12,7 @@ async function dbSummary() {
   const db = getDb();
   if (!db) return null;
   try {
+    await ensureSchema();
     const [[syms], [bars], runs] = await Promise.all([
       db.select({ n: sql<number>`count(*)::int` }).from(schema.symbols),
       db.select({ n: sql<number>`count(*)::int`, latest: sql<string | null>`max(${schema.bars.date})` }).from(schema.bars),
@@ -98,7 +100,7 @@ export default async function Overview({ searchParams }: { searchParams: Promise
       <Card
         title="Data and jobs"
         aside={
-          summary && !("error" in summary) ? (
+          summary ? (
             <form action="/api/cron/after-close" method="post">
               <button type="submit" className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white">Run after-close job now</button>
             </form>

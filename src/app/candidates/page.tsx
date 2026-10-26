@@ -1,5 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
+import { ensureSchema } from "@/lib/db/migrate";
 import { Card, Pill, Empty, usd } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export default async function Candidates() {
   let scan: typeof schema.scans.$inferSelect | undefined;
   let rows: (typeof schema.candidates.$inferSelect)[] = [];
   try {
+    await ensureSchema();
     [scan] = await db.select().from(schema.scans).orderBy(desc(schema.scans.id)).limit(1);
     if (scan) rows = await db.select().from(schema.candidates).where(eq(schema.candidates.scanId, scan.id)).orderBy(desc(schema.candidates.tradeable), desc(schema.candidates.score));
   } catch (e) {
