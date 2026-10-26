@@ -137,6 +137,18 @@ const statements = [
     revealed_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (strategy, version)
   )`,
+  // One-time: switch from IEX-only prices (history from mid-2020, about 2% of volume) to full-market data
+  // back to 2016. Old bars are cleared so the two feeds never mix; Load history refills them, and the
+  // volume rule goes back to real shares.
+  `WITH m AS (
+    INSERT INTO app_migrations (name) VALUES ('sip_feed') ON CONFLICT DO NOTHING RETURNING name
+  ), b AS (
+    DELETE FROM bars WHERE EXISTS (SELECT 1 FROM m) RETURNING 1
+  ), f AS (
+    DELETE FROM backfills WHERE EXISTS (SELECT 1 FROM m) RETURNING 1
+  )
+  UPDATE settings SET min_avg_volume = 1000000, updated_at = now()
+  WHERE min_avg_volume = 25000 AND EXISTS (SELECT 1 FROM m)`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,

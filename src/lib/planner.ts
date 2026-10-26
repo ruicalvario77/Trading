@@ -36,9 +36,7 @@ export const DEFAULT_RULES: PlanRules = {
   maxPositionPct: 20, // five positions at 20% each uses the whole account, no margin
   minPrice: 5,
   maxPrice: 500,
-  // Measured on the free IEX feed, which carries roughly 2-3% of US volume.
-  // 25,000 IEX shares a day is about 1 million shares across all exchanges.
-  minAvgVolume: 25_000,
+  minAvgVolume: 1_000_000, // full-market 20-day average
   targetR: 2,
 };
 
@@ -58,7 +56,7 @@ export function planTrade(x: PlanInputs, r: PlanRules): TradePlan {
 
   if (x.close < r.minPrice) reasons.push(`price ${x.close.toFixed(2)} below minimum ${r.minPrice}`);
   if (x.close > r.maxPrice) reasons.push(`price ${x.close.toFixed(2)} above maximum ${r.maxPrice}`);
-  if (x.avgVolume20 < r.minAvgVolume) reasons.push(`average IEX volume ${Math.round(x.avgVolume20).toLocaleString()} below ${r.minAvgVolume.toLocaleString()}`);
+  if (x.avgVolume20 < r.minAvgVolume) reasons.push(`average volume ${Math.round(x.avgVolume20).toLocaleString()} below ${r.minAvgVolume.toLocaleString()}`);
 
   const stopPct = riskPerShare / entry;
   if (riskPerShare <= 0) reasons.push("stop is not below entry");

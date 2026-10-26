@@ -46,7 +46,7 @@ test("illiquid or out-of-band prices are rejected", () => {
 test("a tight stop is trimmed to the position cap instead of rejected", () => {
   // R100,000 account: $55.56 risk budget, 20% cap = $1,111. A $0.50 stop on a $50 stock wants 111 shares.
   const plan = planTrade(
-    { close: 50, todayHigh: 50, pullbackLow: 49.6, atr14: 0.4, avgVolume20: 100_000 },
+    { close: 50, todayHigh: 50, pullbackLow: 49.6, atr14: 0.4, avgVolume20: 2_000_000 },
     DEFAULT_RULES,
   );
   assert.equal(plan.tradeable, true);

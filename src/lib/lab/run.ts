@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { requireDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { loadSettings } from "../settings";
+import { DATA_FEED } from "../alpaca";
 import { smaSeries, type OHLCV } from "../indicators";
 import type { Settings } from "../db/schema";
 import { UNIVERSE } from "../universe";
@@ -21,6 +22,8 @@ export type LabStrategyResult = {
 };
 
 export type LabResults = {
+  /** Price source. Missing on runs made before the switch to full-market data, which used IEX only. */
+  feed?: string;
   start: string;
   end: string;
   split: string;
@@ -92,6 +95,7 @@ export function computeLab(bars: Map<string, OHLCV[]>, settings: Settings): LabR
   };
 
   const results: LabResults = {
+    feed: DATA_FEED,
     start, end, split: SPLIT_DATE, notional: LAB_NOTIONAL, slippagePct: LAB_SLIPPAGE_PCT, etfCount: etfs.length,
     benchmark: { ...measure(benchCurve, []), curve: normalized(benchCurve, start) },
     strategies: STRATEGIES.map((s) => ({ id: s.id, version: s.version, ...measure(sims[s.id].curve, sims[s.id].trades), curve: normalized(sims[s.id].curve, start) })),

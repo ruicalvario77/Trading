@@ -52,7 +52,7 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
             <Stat label="Symbols loaded" value={<span className="text-base">{bf.n} / {sy.n}</span>} />
           </div>
           <p className="mt-3 text-sm text-muted">
-            The backtest needs years of daily prices. Loading pulls everything back to {HISTORY_START.slice(0, 4)} from the free data feed.
+            The backtest needs years of daily prices. Loading pulls full-market history back to {HISTORY_START.slice(0, 4)} for every symbol.
             It takes a few minutes and may need two or three presses.
           </p>
           <form action="/api/backfill" method="post" className="mt-3">
@@ -77,7 +77,7 @@ export default async function BacktestPage({ searchParams }: { searchParams: Pro
             </label>
             <button type="submit" disabled={cov.bars === 0} className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50">Run backtest</button>
           </form>
-          {!historyDone && cov.bars > 0 && <p className="mt-2 text-xs text-warn">History is not fully loaded, so results would only cover the last 15 months.</p>}
+          {!historyDone && <p className="mt-2 text-xs text-warn">History is not fully loaded yet. Load it first, or the results will cover too short a period.</p>}
         </Card>
       </div>
 
@@ -101,6 +101,11 @@ function Results({ r, id }: { r: BacktestResults; id: number }) {
   const best = [...r.variants].sort((a, b) => b.edge.expectancyR - a.edge.expectancyR)[0];
   return (
     <div className="space-y-6">
+      {!r.feed && (
+        <div className="rounded border border-warn bg-warn-soft px-4 py-3 text-sm text-warn">
+          This run used the old single-exchange data, which for most symbols only starts in mid-2020. Run the backtest again for full-market results back to 2016.
+        </div>
+      )}
       <Card title={`Run #${id}: ${r.firstDate} to ${r.lastDate}`} aside={<span className="text-xs text-muted">{r.years.toFixed(1)} years · {r.symbolsWithData} symbols</span>}>
         <div className="grid gap-3 md:grid-cols-3">
           {r.variants.map((v, k) => {
@@ -275,7 +280,7 @@ function Results({ r, id }: { r: BacktestResults; id: number }) {
         <ul className="list-disc space-y-1 pl-5 text-sm text-muted">
           <li>The universe is today&apos;s list of stocks. Companies that collapsed or were delisted since {r.firstDate.slice(0, 4)} are missing, which flatters the results.</li>
           <li>The settings were chosen before testing, which is good, but every change made after looking at these numbers makes the next result less trustworthy.</li>
-          <li>Prices come from one exchange (IEX). Highs and lows can differ slightly from the full market, which moves some fills and stops.</li>
+          <li>Daily bars cannot show what happened inside the day. When a bar touches both the stop and the target, the test assumes the stop came first.</li>
           <li>It assumes every tradeable setup is approved. Skipping some by feel changes the result in ways no test can measure.</li>
         </ul>
       </Card>

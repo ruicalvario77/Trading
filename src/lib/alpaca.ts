@@ -3,6 +3,9 @@ import type { OHLCV } from "./indicators";
 
 const DATA_URL = "https://data.alpaca.markets";
 
+/** Full-market data. Volumes are real consolidated volumes, history goes back to 2016. */
+export const DATA_FEED = "sip";
+
 export function alpacaConfigured(): boolean {
   return !!env("APCA_API_KEY_ID") && !!env("APCA_API_SECRET_KEY");
 }
@@ -39,18 +42,22 @@ type RawBar = { t: string; o: number; h: number; l: number; c: number; v: number
 type BarsResponse = { bars: Record<string, RawBar[]> | null; next_page_token: string | null };
 
 /**
- * Daily bars for many symbols between two ISO dates (inclusive), split-adjusted, from the free IEX feed.
+ * Daily bars for many symbols from `start` (ISO date), split-adjusted, full-market (SIP) data.
+ * The free plan serves SIP history as long as the request ends at least 15 minutes ago, so `end` is
+ * clamped to 20 minutes before now.
  * Returns a map of symbol to ascending bars. Follows pagination.
  */
 export async function getDailyBars(symbolList: string[], start: string, end: string): Promise<Record<string, OHLCV[]>> {
   const out: Record<string, OHLCV[]> = {};
+  const latest = new Date(Date.now() - 20 * 60_000).toISOString();
+  const safeEnd = end.length <= 10 && `${end}T23:59:59Z` < latest ? `${end}T23:59:59Z` : latest;
   const chunk = 100;
   for (let i = 0; i < symbolList.length; i += chunk) {
     const syms = symbolList.slice(i, i + chunk).join(",");
     let token: string | null = null;
     do {
       const params = new URLSearchParams({
-        symbols: syms, timeframe: "1Day", start, end, limit: "10000", adjustment: "split", feed: "iex", sort: "asc",
+        symbols: syms, timeframe: "1Day", start, end: safeEnd, limit: "10000", adjustment: "split", feed: DATA_FEED, sort: "asc",
       });
       if (token) params.set("page_token", token);
       const page: BarsResponse = await get(`${DATA_URL}/v2/stocks/bars?${params.toString()}`);

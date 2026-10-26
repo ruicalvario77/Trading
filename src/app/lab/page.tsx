@@ -51,6 +51,11 @@ export default async function LabPage({ searchParams }: { searchParams: Promise<
         <Card><Empty>No lab run yet. Press Run the lab.</Empty></Card>
       ) : (
         <>
+          {!r.feed && (
+            <div className="rounded border border-warn bg-warn-soft px-4 py-3 text-sm text-warn">
+              This run used the old single-exchange data, so its build period is far too short. Do not open any sealed result from it. Run the lab again after loading full history.
+            </div>
+          )}
           <p className="text-sm text-muted">
             Run #{sel!.id} on {sel!.createdAt.toLocaleDateString("en-ZA")}. Build period {r.start} to 2022-12-31, sealed period {r.split} to {r.end}.
             {" "}Results in percent, simulated on a ${(r.notional / 1000).toFixed(0)}k account so whole-share rounding does not distort them. Dividends are left out for every strategy and for SPY alike.
@@ -152,6 +157,8 @@ function StrategyCard({ def, res, r, runId, reveal }: { def: StrategyDef; res: L
             ? "It beat SPY on both counts in data it was never built on."
             : `${h.beatsReturn ? "It earned more than SPY" : "It earned less than SPY"} and ${h.smallerFall ? "fell less" : "fell further"}, so it does not meet the pass mark.`}
         </p>
+      ) : !r.feed || r.start > "2018-12-31" ? (
+        <p className="mt-4 rounded bg-bg px-3 py-2.5 text-sm text-muted">The sealed result stays closed for this run: its build period is too short to judge.</p>
       ) : (
         <form action={revealHoldout} className="mt-4 flex flex-wrap items-center gap-3 rounded bg-bg px-3 py-2.5 text-sm">
           <input type="hidden" name="strategy" value={def.id} />

@@ -8,7 +8,7 @@ A systematic swing trading platform: scan after the close, plan the trade, place
 |---|---|---|
 | App and API | Next.js (App Router, TypeScript) on Vercel | One deploy for UI, API routes and scheduled jobs |
 | Database | Postgres (Neon, via Vercel Marketplace) with Drizzle ORM | Free tier, auto-injected `DATABASE_URL`, serverless friendly |
-| Market data and broker | Alpaca (paper account, free IEX data feed) | Free, supports bracket orders, same API for paper and live |
+| Market data and broker | Alpaca (paper account, free full-market daily history back to 2016) | Free, supports bracket orders, same API for paper and live |
 | Scheduled jobs | Vercel Cron | Nightly scan and stop management after the close, order placement before the open |
 | Auth | Single-user password in an env var, signed cookie | One user, no accounts to manage |
 
@@ -30,7 +30,7 @@ A systematic swing trading platform: scan after the close, plan the trade, place
 | Risk per trade | 1% of account |
 | Max open positions | 5 |
 | Weekly loss limit | 4% of account, then no new entries until Monday |
-| Universe | Price $5 to $500, 20-day IEX volume above 25,000 shares (about 1M market-wide) |
+| Universe | Price $5 to $500, 20-day average volume above 1M shares |
 | Max position size | 20% of account |
 | Target | 2R |
 | Time stop | 10 trading days |

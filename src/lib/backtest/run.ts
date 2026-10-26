@@ -2,6 +2,7 @@ import { and, eq, gte } from "drizzle-orm";
 import { requireDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { loadSettings } from "../settings";
+import { DATA_FEED } from "../alpaca";
 import { summarizeR, type RStats } from "../stats";
 import type { OHLCV } from "../indicators";
 import {
@@ -24,6 +25,8 @@ export type VariantResult = {
 };
 
 export type BacktestResults = {
+  /** Price source. Missing on runs made before the switch to full-market data, which used IEX only. */
+  feed?: string;
   firstDate: string;
   lastDate: string;
   midDate: string;
@@ -145,6 +148,7 @@ export async function runBacktest(opts: { startYear: number }): Promise<number> 
     : null;
 
   const results: BacktestResults = {
+    feed: DATA_FEED,
     firstDate, lastDate, midDate, years, symbolsWithData: withData.length, funnel,
     assumptions: {
       slippagePct: SLIPPAGE_PCT, entryWindowDays: ENTRY_WINDOW_DAYS, timeStopDays: settings.timeStopDays, riskPct: settings.riskPct,

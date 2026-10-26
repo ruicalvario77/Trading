@@ -29,7 +29,7 @@ const groups: { title: string; fields: Field[] }[] = [
     fields: [
       { name: "minPrice", label: "Minimum price", step: "0.5", hint: "" },
       { name: "maxPrice", label: "Maximum price", step: "1", hint: "Lower prices let a small account buy whole shares." },
-      { name: "minAvgVolume", label: "Minimum 20-day average volume (IEX)", step: "1000", hint: "Free data covers one exchange, about 2-3% of all US volume. 25,000 here is roughly 1 million shares market-wide." },
+      { name: "minAvgVolume", label: "Minimum 20-day average volume", step: "100000", hint: "Shares traded per day across all US exchanges. Keeps out stocks where your orders could move the price." },
       { name: "targetR", label: "Target (multiple of risk)", step: "0.5", hint: "2 means winners are twice the size of losers." },
       { name: "timeStopDays", label: "Time stop (trading days)", step: "1", hint: "Exit at the close if neither stop nor target has hit." },
     ],
