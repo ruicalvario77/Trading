@@ -139,6 +139,53 @@ export const labReveals = pgTable(
   (t) => [primaryKey({ columns: [t.strategy, t.version] })],
 );
 
+// Learning loop
+export const loopState = pgTable("loop_state", {
+  id: integer("id").primaryKey(),
+  status: text("status").notNull(), // off | paper
+  startedAt: date("started_at"),
+  startEquity: doublePrecision("start_equity"),
+  cash: doublePrecision("cash").notNull(),
+  spyStart: doublePrecision("spy_start"),
+  champion: text("champion"),
+  championReason: text("champion_reason"),
+  appliedTarget: jsonb("applied_target").$type<Record<string, number> | null>(),
+  lastResearchAt: timestamp("last_research_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const loopHoldings = pgTable("loop_holdings", {
+  symbol: text("symbol").primaryKey(),
+  shares: integer("shares").notNull(),
+});
+
+export const loopOrders = pgTable("loop_orders", {
+  id: serial("id").primaryKey(),
+  brokerId: text("broker_id").notNull(),
+  symbol: text("symbol").notNull(),
+  side: text("side").notNull(),
+  qty: integer("qty").notNull(),
+  expectedPrice: doublePrecision("expected_price").notNull(),
+  status: text("status").notNull(), // open | filled | dead
+  fillPrice: doublePrecision("fill_price"),
+  filledQty: integer("filled_qty"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  filledAt: timestamp("filled_at", { withTimezone: true }),
+});
+
+export const loopEquity = pgTable("loop_equity", {
+  date: date("date").primaryKey(),
+  equity: doublePrecision("equity").notNull(),
+  spyClose: doublePrecision("spy_close").notNull(),
+  champion: text("champion"),
+});
+
+export const loopResearch = pgTable("loop_research", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  results: jsonb("results").$type<unknown>().notNull(),
+});
+
 export const jobRuns = pgTable("job_runs", {
   id: serial("id").primaryKey(),
   job: text("job").notNull(),

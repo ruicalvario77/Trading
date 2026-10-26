@@ -101,12 +101,17 @@ export async function cancelOrder(id: string): Promise<void> {
   if (!res.ok && res.status !== 404 && res.status !== 422) throw new Error(`Alpaca cancel ${res.status}: ${(await res.text()).slice(0, 300)}`);
 }
 
-export async function submitMarketSell(symbol: string, qty: number, clientOrderId: string): Promise<{ id: string; status: string }> {
+/** Market order for the next session's open when sent after the close. */
+export async function submitMarketOrder(symbol: string, qty: number, side: "buy" | "sell", clientOrderId: string): Promise<{ id: string; status: string }> {
   const res = await fetch(`${alpacaBaseUrl()}/v2/orders`, {
     method: "POST",
     headers: { ...headers(), "content-type": "application/json" },
-    body: JSON.stringify({ symbol, qty: String(qty), side: "sell", type: "market", time_in_force: "day", client_order_id: clientOrderId }),
+    body: JSON.stringify({ symbol, qty: String(qty), side, type: "market", time_in_force: "day", client_order_id: clientOrderId }),
   });
-  if (!res.ok) throw new Error(`Alpaca sell rejected ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) throw new Error(`Alpaca ${side} rejected ${res.status}: ${(await res.text()).slice(0, 300)}`);
   return (await res.json()) as { id: string; status: string };
+}
+
+export function submitMarketSell(symbol: string, qty: number, clientOrderId: string) {
+  return submitMarketOrder(symbol, qty, "sell", clientOrderId);
 }

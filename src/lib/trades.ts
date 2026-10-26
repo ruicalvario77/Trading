@@ -9,14 +9,14 @@ export function entryLimitFor(entry: number): number {
 /** Untriggered entries are cancelled after this many calendar days (about 2 trading days). */
 export const ENTRY_EXPIRY_DAYS = 3;
 
-export type BrokerLeg = { id: string; type: string; status: string; filled_avg_price: string | null; filled_at: string | null };
+export type BrokerLeg = { id: string; type: string; status: string; filled_avg_price: string | null; filled_at: string | null; filled_qty?: string | null };
 export type BrokerOrder = BrokerLeg & { legs?: BrokerLeg[] | null };
 
 export type TradeUpdate = Partial<
   Pick<Trade, "status" | "entryFill" | "enteredAt" | "exitFill" | "exitedAt" | "exitReason" | "pnlUsd" | "rMultiple" | "exitOrderId">
 >;
 
-const DEAD = new Set(["canceled", "expired", "rejected", "done_for_day", "suspended"]);
+export const DEAD = new Set(["canceled", "expired", "rejected", "done_for_day", "suspended"]);
 
 /**
  * Compares one stored trade with its bracket order at the broker and returns the fields that changed,

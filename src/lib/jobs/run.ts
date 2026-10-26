@@ -4,6 +4,7 @@ import { ensureSchema } from "../db/migrate";
 import { runAfterClose } from "./afterClose";
 import { applyTimeStops, placeApproved, syncTrades } from "./orders";
 import { loadSettings } from "../settings";
+import { loopDaily } from "../loop/run";
 
 export type JobName = "after-close" | "pre-open";
 
@@ -19,7 +20,10 @@ export async function runJob(job: JobName): Promise<{ ok: boolean; summary?: unk
       const sync = await syncTrades();
       const scan = await runAfterClose();
       const timeStops = await applyTimeStops(await loadSettings());
-      summary = { ...scan, sync, timeStops };
+      // The learning loop must never stop the rest of the nightly job.
+      let loop: unknown;
+      try { loop = await loopDaily(); } catch (e) { loop = { error: e instanceof Error ? e.message : String(e) }; }
+      summary = { ...scan, sync, timeStops, loop };
     } else {
       const sync = await syncTrades();
       const place = await placeApproved(await loadSettings());

@@ -149,6 +149,45 @@ const statements = [
   )
   UPDATE settings SET min_avg_volume = 1000000, updated_at = now()
   WHERE min_avg_volume = 25000 AND EXISTS (SELECT 1 FROM m)`,
+  `CREATE TABLE IF NOT EXISTS loop_state (
+    id integer PRIMARY KEY,
+    status text NOT NULL,
+    started_at date,
+    start_equity double precision,
+    cash double precision NOT NULL,
+    spy_start double precision,
+    champion text,
+    champion_reason text,
+    applied_target jsonb,
+    last_research_at timestamptz,
+    updated_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  `INSERT INTO loop_state (id, status, cash) VALUES (1, 'off', 0) ON CONFLICT DO NOTHING`,
+  `CREATE TABLE IF NOT EXISTS loop_holdings (symbol text PRIMARY KEY, shares integer NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS loop_orders (
+    id serial PRIMARY KEY,
+    broker_id text NOT NULL,
+    symbol text NOT NULL,
+    side text NOT NULL,
+    qty integer NOT NULL,
+    expected_price double precision NOT NULL,
+    status text NOT NULL,
+    fill_price double precision,
+    filled_qty integer,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    filled_at timestamptz
+  )`,
+  `CREATE TABLE IF NOT EXISTS loop_equity (
+    date date PRIMARY KEY,
+    equity double precision NOT NULL,
+    spy_close double precision NOT NULL,
+    champion text
+  )`,
+  `CREATE TABLE IF NOT EXISTS loop_research (
+    id serial PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    results jsonb NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,

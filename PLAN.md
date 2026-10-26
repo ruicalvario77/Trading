@@ -73,6 +73,7 @@ Two jobs keeps the project within the Vercel Hobby plan cron limits.
 | 5 | Time stop live, journal with rule-compliance log, live stats compared with the backtest, plain-language reason on every candidate | Done |
 | 6 | Backtest verdict: the pullback setup has no edge (about -0.06R per trade, 2017-2026, all three management styles). Approvals paused. | Done |
 | 7 | Strategy lab, seals opened 26 Oct 2026. Sealed 2023-2026 vs SPY (+19.9%/yr, worst fall -19%): rotation +24.4%/yr but -30.6% fall; dip buying +1.0%/yr, -5.1%; filtered pullback -16.0%/yr, -49.8%. None met the pass mark. | Done |
-| 8 | Long-term money in a low-cost index fund; platform continues as a paper-trading learning tool | Owner to decide |
+| 8 | Learning loop: 57 rule sets (hold, trend timing, ETF rotation, dual momentum, dip buying) re-tested monthly on the last three years; the index is the default champion and a challenger must beat it by +0.10 risk-adjusted; the champion is paper traded automatically; month-by-month self-test against SPY; live-readiness checklist | Built, owner to start paper trading |
+| 8a | Live gate: 6 months of paper, paper at least as good as SPY risk-adjusted, worst fall under 20%, fills within 0.3% of model, self-test beats the index, owner decision with a broker serving South Africa | Tracked on the Loop page |
 | 9 | Daily email briefing after each scan | Needs an email provider key from the owner |
 | 10 | At least 30 paper trades compared with the test, then a decision about real capital | Later |
