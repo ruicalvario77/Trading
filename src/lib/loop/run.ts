@@ -8,7 +8,7 @@ import { DEAD } from "../trades";
 import { buildMarket, isMonthEnd, sameWeights, type Market, type Weights } from "./market";
 import { CONFIGS, LOOP_SYMBOLS, BASELINE_ID, configById } from "./families";
 import { simulateWeights } from "./sim";
-import { runAll, selectChampion, metaTest, leaderboard, type MetaTest, type LeaderRow } from "./research";
+import { runAll, selectChampion, metaTest, leaderboard, requiredMargin, type MetaTest, type LeaderRow } from "./research";
 
 export type ResearchResults = {
   asOf: string;
@@ -18,6 +18,8 @@ export type ResearchResults = {
   target: Weights;
   leaderboard: LeaderRow[];
   baselineSharpe: number;
+  /** How much a challenger had to beat the index by. Missing on runs before the luck correction. */
+  requiredMargin?: number;
   meta: MetaTest;
 };
 
@@ -46,6 +48,7 @@ export async function runResearch(db: Db, m?: Market): Promise<ResearchResults> 
     target: champRun.sim.lastTarget,
     leaderboard: leaderboard(runs, market),
     baselineSharpe: sel.scores.find((s) => s.id === BASELINE_ID)?.sharpe ?? 0,
+    requiredMargin: requiredMargin(runs.length),
     meta: metaTest(runs, market),
   };
   await db.insert(schema.loopResearch).values({ results });

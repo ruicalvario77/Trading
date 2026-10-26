@@ -58,7 +58,7 @@ export default async function LoopPage({ searchParams }: { searchParams: Promise
       <Card title="How the loop works">
         <ol className="grid gap-3 text-sm sm:grid-cols-4">
           <li className="rounded bg-bg p-3"><div className="font-medium">1. Re-test monthly</div><p className="mt-1 text-muted">After each month&apos;s last close, every rule set on the menu ({latest?.configsTested ?? "about 60"}) is re-run on the latest three years.</p></li>
-          <li className="rounded bg-bg p-3"><div className="font-medium">2. Pick a champion</div><p className="mt-1 text-muted">Holding the S&amp;P 500 is the default. A rule set only takes over by beating it clearly on return per unit of risk.</p></li>
+          <li className="rounded bg-bg p-3"><div className="font-medium">2. Pick a champion</div><p className="mt-1 text-muted">Holding the S&amp;P 500 is the default. A rule set only takes over by beating it on return per unit of risk by more than luck could explain.</p></li>
           <li className="rounded bg-bg p-3"><div className="font-medium">3. Paper trade it</div><p className="mt-1 text-muted">The account moves to the champion&apos;s holdings at the next open, automatically, on Alpaca paper.</p></li>
           <li className="rounded bg-bg p-3"><div className="font-medium">4. Earn live</div><p className="mt-1 text-muted">A checklist tracks whether the paper record justifies real money. Going live is always your call.</p></li>
         </ol>
@@ -123,6 +123,11 @@ export default async function LoopPage({ searchParams }: { searchParams: Promise
 
       {latest ? (
         <>
+          {!latest.requiredMargin && (
+            <div className="rounded border border-warn bg-warn-soft px-4 py-3 text-sm text-warn">
+              These results use the old selection rule, which let lucky rule sets take over. Press Re-test now to see the corrected loop.
+            </div>
+          )}
           <Card title="Would this loop have beaten the index?">
             <p className="text-sm text-muted">
               The loop replayed month by month from {latest.meta.from} to {latest.meta.to}, choosing each month with only the data it would have had then.
@@ -176,7 +181,11 @@ export default async function LoopPage({ searchParams }: { searchParams: Promise
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-xs text-muted">A challenger needs at least +0.10 over the index to become champion, and +0.10 over a sitting champion to replace it.</p>
+            <p className="mt-2 text-xs text-muted">
+              {latest.requiredMargin
+                ? `A challenger must beat the index by more than ${latest.requiredMargin.toFixed(2)} to become champion. That is how far the best of ${latest.configsTested} rule sets can get ahead by luck alone over three years.`
+                : "This run used the old +0.10 bar, which was too easy to clear by luck. Re-test to apply the corrected bar."}
+            </p>
           </Card>
         </>
       ) : (

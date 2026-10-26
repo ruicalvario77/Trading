@@ -5,8 +5,32 @@ import { simulateWeights, type SimResult } from "./sim";
 
 /** Trailing window the loop judges rule sets on: about three years of trading days. */
 export const LOOKBACK_DAYS = 756;
-/** A challenger must beat the index, and the current champion, by this much risk-adjusted return. */
-export const MARGIN = 0.1;
+/** Inverse of the standard normal CDF (Acklam's approximation, accurate to about 1e-9). */
+export function normInv(p: number): number {
+  const a = [-39.69683028665376, 220.9460984245205, -275.9285104469687, 138.357751867269, -30.66479806614716, 2.506628277459239];
+  const b = [-54.47609879822406, 161.5858368580409, -155.6989798598866, 66.80131188771972, -13.28068155288572];
+  const c = [-0.007784894002430293, -0.3223964580411365, -2.400758277161838, -2.549732539343734, 4.374664141464968, 2.938163982698783];
+  const d = [0.007784695709041462, 0.3224671290700398, 2.445134137142996, 3.754408661907416];
+  const lo = 0.02425;
+  if (p < lo) { const q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if (p > 1 - lo) { const q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  const q = p - 0.5, r = q * q;
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+
+/**
+ * How far the best of `n` rule sets can beat the index on risk-adjusted return by luck alone, over `years`
+ * of data. It is the expected maximum of n zero-skill results (Bailey and Lopez de Prado), scaled by the
+ * standard error of an annual risk-adjusted return, about 1/sqrt(years). A challenger must clear this bar.
+ * Treating the rule sets as independent makes the bar stricter than it strictly needs to be, which is the
+ * safe side to err on with real money at the end.
+ */
+export function requiredMargin(n: number, years = LOOKBACK_DAYS / 252): number {
+  if (n <= 1) return 0;
+  const g = 0.5772156649; // Euler-Mascheroni constant
+  const expectedMax = (1 - g) * normInv(1 - 1 / n) + g * normInv(1 - 1 / (n * Math.E));
+  return expectedMax / Math.sqrt(years);
+}
 /** Rough cost of switching the whole account from one rule set to another. */
 export const SWITCH_COST = 0.002;
 
@@ -40,10 +64,11 @@ export type Selection = { id: string; reason: string; scores: { id: string; shar
 
 /**
  * Picks the champion at day t from data up to t only. The index (hold SPY) is the default. A challenger
- * takes over only if it beats the index by MARGIN, and replaces a sitting champion only if it beats that one
- * by MARGIN too, so the loop does not chase noise from month to month.
+ * takes over only if it beats the index by more than luck could explain (requiredMargin), and replaces a
+ * sitting champion only if it beats that one by the same margin, so the loop does not chase noise.
  */
 export function selectChampion(runs: ConfigRun[], t: number, current: string | null): Selection {
+  const MARGIN = requiredMargin(runs.length);
   const a = t - LOOKBACK_DAYS;
   const scores = runs.map((r) => ({ id: r.def.id, sharpe: a >= 0 ? sharpe(r, a, t) : 0 })).sort((x, y) => y.sharpe - x.sharpe);
   const score = (id: string | null) => scores.find((s) => s.id === id)?.sharpe ?? -Infinity;
@@ -54,9 +79,13 @@ export function selectChampion(runs: ConfigRun[], t: number, current: string | n
     return { id: current, reason: "The current champion still beats the index, and no challenger beats it by a clear margin.", scores };
   }
   if (best.id !== BASELINE_ID && best.sharpe >= base + MARGIN) {
-    return { id: best.id, reason: `Beat the index on risk-adjusted return over the last three years by ${(best.sharpe - base).toFixed(2)}.`, scores };
+    return { id: best.id, reason: `Beat the index on risk-adjusted return over the last three years by ${(best.sharpe - base).toFixed(2)}, more than the ${MARGIN.toFixed(2)} luck could explain.`, scores };
   }
-  return { id: BASELINE_ID, reason: "No rule set beat the index by a clear margin over the last three years, so the loop holds the index.", scores };
+  return {
+    id: BASELINE_ID,
+    reason: `No rule set beat the index by more than luck could explain (${MARGIN.toFixed(2)} on risk-adjusted return when choosing from ${runs.length}), so the loop holds the index.`,
+    scores,
+  };
 }
 
 export type MetaTest = {

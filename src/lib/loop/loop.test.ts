@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { buildMarket, isMonthEnd } from "./market";
 import { simulateWeights } from "./sim";
 import { CONFIGS, BASELINE_ID } from "./families";
-import { runAll, selectChampion, metaTest, firstDecisionDay } from "./research";
+import { runAll, selectChampion, metaTest, firstDecisionDay, requiredMargin, normInv } from "./research";
 import type { OHLCV } from "../indicators";
 
 const days = (n: number) => {
@@ -54,4 +54,14 @@ test("the index stays champion unless a challenger clearly beats it", () => {
   assert.equal(mt.switches, 0);
   assert.ok(Math.abs(mt.loop.cagrPct - mt.index.cagrPct) < 0.5);
   assert.ok(firstDecisionDay() < d.length);
+});
+
+test("the luck bar grows with the number of rule sets and shrinks with more data", () => {
+  assert.ok(Math.abs(normInv(0.975) - 1.959964) < 1e-5);
+  assert.ok(Math.abs(normInv(0.5)) < 1e-9);
+  const m57 = requiredMargin(57, 3);
+  assert.ok(m57 > 1.2 && m57 < 1.5, `57 rule sets over 3 years: ${m57}`);
+  assert.ok(requiredMargin(57, 12) < m57);
+  assert.ok(requiredMargin(5, 3) < m57);
+  assert.equal(requiredMargin(1, 3), 0);
 });
