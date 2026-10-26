@@ -7,8 +7,10 @@ import { requireDb, schema } from "@/lib/db";
 import { loadSettings } from "@/lib/settings";
 import { committedCount, weekPnl } from "@/lib/jobs/orders";
 import { limitBlock } from "@/lib/trades";
+import { PULLBACK_APPROVALS_PAUSED, PULLBACK_PAUSE_REASON } from "@/lib/strategy/status";
 
 export async function approveCandidate(form: FormData) {
+  if (PULLBACK_APPROVALS_PAUSED) redirect(`/candidates?msg=${encodeURIComponent(PULLBACK_PAUSE_REASON)}`);
   const id = Number(form.get("id"));
   const db = requireDb();
   const [c] = await db.select().from(schema.candidates).where(eq(schema.candidates.id, id)).limit(1);

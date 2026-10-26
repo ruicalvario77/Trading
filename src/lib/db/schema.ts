@@ -121,6 +121,24 @@ export const backfills = pgTable("backfills", {
   doneAt: timestamp("done_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const labRuns = pgTable("lab_runs", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  results: jsonb("results").$type<unknown>().notNull(),
+});
+
+/** One row per strategy version whose sealed 2023+ result has been opened. Never deleted. */
+export const labReveals = pgTable(
+  "lab_reveals",
+  {
+    strategy: text("strategy").notNull(),
+    version: text("version").notNull(),
+    runId: integer("run_id").notNull(),
+    revealedAt: timestamp("revealed_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.strategy, t.version] })],
+);
+
 export const jobRuns = pgTable("job_runs", {
   id: serial("id").primaryKey(),
   job: text("job").notNull(),

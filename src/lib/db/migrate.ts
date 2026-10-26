@@ -125,6 +125,18 @@ const statements = [
     earliest date,
     done_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS lab_runs (
+    id serial PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    results jsonb NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS lab_reveals (
+    strategy text NOT NULL,
+    version text NOT NULL,
+    run_id integer NOT NULL,
+    revealed_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (strategy, version)
+  )`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,

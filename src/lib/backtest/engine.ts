@@ -28,7 +28,14 @@ export type SimTrade = {
   daysHeld: number;
 };
 
-export type SimConfig = { rules: PlanRules; timeStopDays: number; slippagePct: number; entryWindowDays: number };
+export type SimConfig = {
+  rules: PlanRules;
+  timeStopDays: number;
+  slippagePct: number;
+  entryWindowDays: number;
+  /** Optional extra condition on the signal date, such as a market filter. */
+  signalFilter?: (date: string) => boolean;
+};
 export type Funnel = { signals: number; rejected: Record<string, number>; unfilled: number; entered: number };
 
 export function rejectKey(reason: string): string {
@@ -55,6 +62,7 @@ export function simulateSymbol(symbol: string, b: OHLCV[], variant: Variant, cfg
   while (i < b.length - 1) {
     const s = pullbackAt(b, ind, i);
     if (!s.ok) { i++; continue; }
+    if (cfg.signalFilter && !cfg.signalFilter(b[i].date)) { i++; continue; }
     funnel.signals++;
     // Sizing depends on the portfolio, so plan with an unlimited account here and size later.
     const plan = planTrade(s, { ...cfg.rules, accountUsd: 1e12, maxPositionPct: 100 });

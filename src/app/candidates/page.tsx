@@ -3,6 +3,7 @@ import { getDb, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { Card, Pill, Empty, usd } from "@/components/ui";
 import { approveCandidate, setCandidateStatus } from "./actions";
+import { PULLBACK_APPROVALS_PAUSED, PULLBACK_PAUSE_REASON } from "@/lib/strategy/status";
 
 const STATUS_TONE: Record<string, "up" | "down" | "warn" | "accent" | "muted"> = {
   approved: "accent", ordered: "up", rejected: "muted", expired: "muted", blocked: "warn", failed: "down",
@@ -29,6 +30,7 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
   return (
     <Shell>
       {msg && <div className="rounded border border-accent bg-accent-soft px-4 py-3 text-sm text-accent">{msg === "not-approvable" ? "That candidate can no longer be approved." : msg}</div>}
+      {PULLBACK_APPROVALS_PAUSED && <div className="rounded border border-warn bg-warn-soft px-4 py-3 text-sm text-warn">{PULLBACK_PAUSE_REASON}</div>}
       <Card title={`Scan for ${scan.tradeDate}`}>
         <p className="text-sm text-muted">
           {scan.universeSize} symbols in the universe, {scan.withEnoughHistory} with enough history, {scan.passedFilters} matched the pullback setup,{" "}
@@ -69,7 +71,9 @@ export default async function Candidates({ searchParams }: { searchParams: Promi
                     )}
                   </td>
                   <td className="px-3 py-2">
-                    {c.status === "new" && c.tradeable ? (
+                    {c.status === "new" && c.tradeable && PULLBACK_APPROVALS_PAUSED ? (
+                      <span className="text-xs text-muted">paused</span>
+                    ) : c.status === "new" && c.tradeable ? (
                       <div className="flex gap-2">
                         <form action={approveCandidate}>
                           <input type="hidden" name="id" value={c.id} />

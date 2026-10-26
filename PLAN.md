@@ -71,6 +71,8 @@ Two jobs keeps the project within the Vercel Hobby plan cron limits.
 | 3 | Approve candidates, bracket orders to Alpaca paper, positions page | Done |
 | 4 | Backtester: same scanner and planner over history since 2016, three trade-management styles compared, results at R100,000 and R10,000 | Done |
 | 5 | Time stop live, journal with rule-compliance log, live stats compared with the backtest, plain-language reason on every candidate | Done |
-| 6 | Adopt the management style the backtest supports (breakeven or trailing stop) in live trading, only if it beats the fixed version | Next, after the first backtest |
-| 7 | Daily email briefing after each scan | Needs an email provider key from the owner |
-| 8 | At least 30 paper trades compared with the backtest, then a decision about real capital | Ongoing |
+| 6 | Backtest verdict: the pullback setup has no edge (about -0.06R per trade, 2017-2026, all three management styles). Approvals paused. | Done |
+| 7 | Strategy lab: trend rotation, dip buying in index ETFs, pullback with market filter. Rules fixed before testing, built on data to 2022, judged once on sealed 2023+ data against SPY | Built, waiting for the owner to run it |
+| 8 | Paper trade whichever lab strategy passes, if any; otherwise index fund for long-term money | After the lab |
+| 9 | Daily email briefing after each scan | Needs an email provider key from the owner |
+| 10 | At least 30 paper trades compared with the test, then a decision about real capital | Later |
