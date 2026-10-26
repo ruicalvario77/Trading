@@ -68,3 +68,39 @@ export function atrSeries(b: OHLCV[], n: number): (number | null)[] {
   }
   return out;
 }
+
+/** RSI with Wilder smoothing. Null until n+1 bars exist. */
+export function rsiSeries(closes: number[], n: number): (number | null)[] {
+  const out: (number | null)[] = new Array(closes.length).fill(null);
+  if (closes.length <= n) return out;
+  let gain = 0;
+  let loss = 0;
+  for (let i = 1; i <= n; i++) {
+    const d = closes[i] - closes[i - 1];
+    if (d > 0) gain += d; else loss -= d;
+  }
+  gain /= n;
+  loss /= n;
+  out[n] = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss);
+  for (let i = n + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    gain = (gain * (n - 1) + Math.max(d, 0)) / n;
+    loss = (loss * (n - 1) + Math.max(-d, 0)) / n;
+    out[i] = loss === 0 ? 100 : 100 - 100 / (1 + gain / loss);
+  }
+  return out;
+}
+
+/** Highest (or lowest) value over the last n values ending at each index, inclusive. */
+export function rollingExtreme(values: number[], n: number, kind: "max" | "min"): (number | null)[] {
+  const out: (number | null)[] = new Array(values.length).fill(null);
+  const dq: number[] = [];
+  const better = kind === "max" ? (a: number, b: number) => a >= b : (a: number, b: number) => a <= b;
+  for (let i = 0; i < values.length; i++) {
+    while (dq.length && better(values[i], values[dq[dq.length - 1]])) dq.pop();
+    dq.push(i);
+    if (dq[0] <= i - n) dq.shift();
+    if (i >= n - 1) out[i] = values[dq[0]];
+  }
+  return out;
+}

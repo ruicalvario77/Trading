@@ -70,20 +70,20 @@ export type PlaceSummary = { tradeDate: string | null; approved: number; placed:
 /** Sends a bracket order for each approved candidate from the latest scan, within the account limits. */
 export async function placeApproved(settings: Settings): Promise<PlaceSummary> {
   const db = requireDb();
-  const [scan] = await db.select().from(schema.scans).orderBy(desc(schema.scans.id)).limit(1);
-  const out: PlaceSummary = { tradeDate: scan?.tradeDate ?? null, approved: 0, placed: 0, blocked: 0, failed: 0, errors: [] };
-  if (!scan) return out;
-
-  // Approvals from older scans describe setups that no longer exist.
+  // The newest signal date with approvals is the one to trade; anything older no longer describes the market.
+  const [latest] = await db.select({ d: sql<string | null>`max(${schema.candidates.tradeDate})` }).from(schema.candidates).where(eq(schema.candidates.status, "approved"));
+  const tradeDate = latest?.d ?? null;
+  const out: PlaceSummary = { tradeDate, approved: 0, placed: 0, blocked: 0, failed: 0, errors: [] };
+  if (!tradeDate) return out;
   await db
     .update(schema.candidates)
     .set({ status: "expired" })
-    .where(and(eq(schema.candidates.status, "approved"), sql`${schema.candidates.tradeDate} < ${scan.tradeDate}`));
+    .where(and(eq(schema.candidates.status, "approved"), sql`${schema.candidates.tradeDate} < ${tradeDate}`));
 
   const approved = await db
     .select()
     .from(schema.candidates)
-    .where(and(eq(schema.candidates.status, "approved"), eq(schema.candidates.tradeDate, scan.tradeDate)))
+    .where(and(eq(schema.candidates.status, "approved"), eq(schema.candidates.tradeDate, tradeDate)))
     .orderBy(desc(schema.candidates.score));
   out.approved = approved.length;
   const pnl = await weekPnl();
@@ -91,7 +91,8 @@ export async function placeApproved(settings: Settings): Promise<PlaceSummary> {
   for (const c of approved) {
     const [t] = await db.select({ n: sql<number>`count(*)::int` }).from(schema.trades).where(inArray(schema.trades.status, ["pending_entry", "open"]));
     const block = limitBlock({ committed: t.n, maxPositions: settings.maxPositions, weekPnlUsd: pnl, accountUsd: settings.accountUsd, weeklyLossLimitPct: settings.weeklyLossLimitPct });
-    if (block || !c.tradeable || !c.entry || !c.stop || !c.target || !c.shares || !c.riskUsd) {
+    const entryType = (c.plan as { entryType?: "stop" | "open" } | null)?.entryType ?? "stop";
+    if (block || !c.tradeable || !c.entry || !c.stop || (entryType === "stop" && !c.target && !c.plan) || !c.shares || !c.riskUsd) {
       await db.update(schema.candidates).set({ status: "blocked", reasons: [...c.reasons, block ?? "plan incomplete"] }).where(eq(schema.candidates.id, c.id));
       out.blocked++;
       continue;
@@ -99,11 +100,11 @@ export async function placeApproved(settings: Settings): Promise<PlaceSummary> {
     try {
       const order = await submitBracketOrder({
         symbol: c.symbol, qty: c.shares, entryStop: c.entry, entryLimit: entryLimitFor(c.entry),
-        takeProfit: c.target, stopLoss: c.stop, clientOrderId: `cand-${c.id}`,
+        takeProfit: c.target ?? null, stopLoss: c.stop, clientOrderId: `cand-${c.id}`, entryType,
       });
       await db.insert(schema.trades).values({
-        candidateId: c.id, symbol: c.symbol, status: "pending_entry", plannedEntry: c.entry, plannedStop: c.stop,
-        plannedTarget: c.target, shares: c.shares, riskUsd: c.riskUsd, currentStop: c.stop, brokerOrderId: order.id,
+        candidateId: c.id, symbol: c.symbol, setup: c.setup ?? "pullback", status: "pending_entry", plannedEntry: c.entry, plannedStop: c.stop,
+        plannedTarget: c.target ?? null, shares: c.shares, riskUsd: c.riskUsd, currentStop: c.stop, brokerOrderId: order.id, plan: c.plan ?? null,
       });
       await db.update(schema.candidates).set({ status: "ordered" }).where(eq(schema.candidates.id, c.id));
       out.placed++;
@@ -135,7 +136,15 @@ export async function applyTimeStops(settings: Settings): Promise<TimeStopSummar
       .select({ n: sql<number>`count(*)::int` })
       .from(schema.bars)
       .where(and(eq(schema.bars.symbol, "SPY"), sql`${schema.bars.date} > ${entered}`));
-    if (row.n < settings.timeStopDays) continue;
+    const plan = (t.plan ?? {}) as { timeStopDays?: number; exitOnStrongClose?: boolean };
+    const timeStop = plan.timeStopDays ?? settings.timeStopDays;
+    // Same count as the backtest: the entry day is day 1, and the sale happens at the next open.
+    let due = row.n + 1 >= timeStop;
+    if (!due && plan.exitOnStrongClose) {
+      const last2 = await db.select().from(schema.bars).where(eq(schema.bars.symbol, t.symbol)).orderBy(desc(schema.bars.date)).limit(2);
+      due = last2.length === 2 && last2[0].date >= entered && last2[0].close > last2[1].high;
+    }
+    if (!due) continue;
     try {
       let order = await getOrder(t.brokerOrderId);
       for (const leg of order.legs ?? []) if (OPEN_ORDER_STATUSES.has(leg.status)) await cancelOrder(leg.id);

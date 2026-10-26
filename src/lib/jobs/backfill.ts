@@ -2,13 +2,16 @@ import { eq } from "drizzle-orm";
 import { requireDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { getDailyBars } from "../alpaca";
+import { LOOP_SYMBOLS } from "../loop/families";
+import { marketHistoryStart } from "./universe";
 
 export const HISTORY_START = "2016-01-01";
 
 export type BackfillSummary = { processed: number; remaining: number; rows: number; total: number };
 
 /**
- * Loads daily history back to HISTORY_START for every symbol not yet done, in groups, stopping when the
+ * Loads daily history for every active symbol not yet done (back to 2016 for the loop's ETFs, four years for
+ * the rest of the market), in groups, stopping when the
  * time budget runs out. Run it again to continue. Symbols with shorter histories are marked done with
  * whatever exists.
  */
@@ -23,9 +26,13 @@ export async function backfillHistory(budgetMs = 230_000): Promise<BackfillSumma
 
   let rows = 0;
   let processed = 0;
+  // The loop's ETFs need history back to 2016; the rest of the market keeps four years.
+  const loopSet = new Set(LOOP_SYMBOLS);
+  todo.sort((a, b) => Number(loopSet.has(b)) - Number(loopSet.has(a)));
   for (let i = 0; i < todo.length && Date.now() - t0 < budgetMs; i += 20) {
     const group = todo.slice(i, i + 20);
-    const fetched = await getDailyBars(group, HISTORY_START, today);
+    const start = group.some((s) => loopSet.has(s)) ? HISTORY_START : marketHistoryStart();
+    const fetched = await getDailyBars(group, start, today);
     const values: (typeof schema.bars.$inferInsert)[] = [];
     for (const [symbol, list] of Object.entries(fetched)) {
       for (const b of list) values.push({ symbol, date: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: Math.round(b.volume) });

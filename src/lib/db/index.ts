@@ -21,4 +21,11 @@ export function requireDb(): Db {
   return db;
 }
 
+/** Plain SQL client for statements that are awkward in the query builder, such as bulk deletes that return a count. */
+export function rawSql() {
+  const url = env("DATABASE_URL");
+  if (!url) throw new Error("DATABASE_URL is not set");
+  return neon(url);
+}
+
 export { schema };

@@ -1,110 +1,77 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
-import { Card, Pill, Empty, usd } from "@/components/ui";
-import { approveCandidate, setCandidateStatus } from "./actions";
-import { PULLBACK_APPROVALS_PAUSED, PULLBACK_PAUSE_REASON } from "@/lib/strategy/status";
-
-const STATUS_TONE: Record<string, "up" | "down" | "warn" | "accent" | "muted"> = {
-  approved: "accent", ordered: "up", rejected: "muted", expired: "muted", blocked: "warn", failed: "down",
-};
+import { SETUPS, setupById } from "@/lib/setups/library";
+import { setupStatuses, type Stage } from "@/lib/setups/paper";
+import { Card, Empty, Pill, usd } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
 
-export default async function Candidates({ searchParams }: { searchParams: Promise<{ msg?: string }> }) {
-  const { msg } = await searchParams;
+const STAGE: Record<Stage, { tone: "up" | "down" | "warn" | "muted"; label: string }> = {
+  research: { tone: "muted", label: "not tested" },
+  failed: { tone: "down", label: "failed backtest, tracked only" },
+  forward: { tone: "warn", label: "forward testing" },
+  paper: { tone: "up", label: "paper trading" },
+};
+
+export default async function Signals() {
   const db = getDb();
   if (!db) return <Shell><Empty>Database not connected.</Empty></Shell>;
-
-  let scan: typeof schema.scans.$inferSelect | undefined;
-  let rows: (typeof schema.candidates.$inferSelect)[] = [];
-  try {
-    await ensureSchema();
-    [scan] = await db.select().from(schema.scans).orderBy(desc(schema.scans.id)).limit(1);
-    if (scan) rows = await db.select().from(schema.candidates).where(eq(schema.candidates.scanId, scan.id)).orderBy(desc(schema.candidates.tradeable), desc(schema.candidates.score));
-  } catch (e) {
-    return <Shell><p className="text-sm text-down">{e instanceof Error ? e.message : String(e)}</p></Shell>;
-  }
-  if (!scan) return <Shell><Empty>No scan has run yet. Run the after-close job from the overview page.</Empty></Shell>;
+  await ensureSchema();
+  const [latest] = await db.select({ d: sql<string | null>`max(${schema.shadowSignals.signalDate})` }).from(schema.shadowSignals);
+  if (!latest?.d) return <Shell><Empty>No signals recorded yet. The nightly job records every setup&apos;s signals after the US close, once the universe and its history are loaded.</Empty></Shell>;
+  const [rows, queued, { statuses }] = await Promise.all([
+    db.select().from(schema.shadowSignals).where(eq(schema.shadowSignals.signalDate, latest.d)).orderBy(desc(schema.shadowSignals.score)),
+    db.select().from(schema.candidates).where(and(eq(schema.candidates.tradeDate, latest.d), sql`${schema.candidates.setup} is not null`)),
+    setupStatuses(db),
+  ]);
+  const queuedSet = new Map(queued.map((q) => [`${q.setup}:${q.symbol}`, q]));
 
   return (
     <Shell>
-      {msg && <div className="rounded border border-accent bg-accent-soft px-4 py-3 text-sm text-accent">{msg === "not-approvable" ? "That candidate can no longer be approved." : msg}</div>}
-      {PULLBACK_APPROVALS_PAUSED && <div className="rounded border border-warn bg-warn-soft px-4 py-3 text-sm text-warn">{PULLBACK_PAUSE_REASON}</div>}
-      <Card title={`Scan for ${scan.tradeDate}`}>
+      <Card title={`Signals after the close of ${latest.d}`}>
         <p className="text-sm text-muted">
-          {scan.universeSize} symbols in the universe, {scan.withEnoughHistory} with enough history, {scan.passedFilters} matched the pullback setup,{" "}
-          {rows.filter((r) => r.tradeable).length} fit the account rules.
+          {rows.length} signal{rows.length === 1 ? "" : "s"} from {SETUPS.length} setups across the market. Every one is recorded and followed forward with its rules.
+          {" "}Only setups at the paper-trading stage place orders; {queued.length} order{queued.length === 1 ? " is" : "s are"} queued for the next open.
         </p>
       </Card>
-      {rows.length === 0 ? (
-        <Empty>Nothing matched tonight. That is a normal result.</Empty>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-          <table className="w-full text-sm">
-            <thead className="text-left text-xs uppercase tracking-wide text-muted">
-              <tr>
-                <th className="px-3 py-2">Symbol</th><th className="px-3 py-2">Close</th><th className="px-3 py-2">Entry</th><th className="px-3 py-2">Stop</th>
-                <th className="px-3 py-2">Target</th><th className="px-3 py-2">Shares</th><th className="px-3 py-2">Risk</th><th className="px-3 py-2">Position</th><th className="px-3 py-2">Fit</th><th className="px-3 py-2">Decision</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.id} className="border-t border-line align-top">
-                  <td className="px-3 py-2">
-                    <div className="num font-medium">{c.symbol}</div>
-                    {c.why && <div className="mt-1 max-w-xs text-xs text-muted">{c.why}</div>}
-                  </td>
-                  <td className="num px-3 py-2">{usd(c.close)}</td>
-                  <td className="num px-3 py-2">{usd(c.entry)}</td>
-                  <td className="num px-3 py-2 text-down">{usd(c.stop)}</td>
-                  <td className="num px-3 py-2 text-up">{usd(c.target)}</td>
-                  <td className="num px-3 py-2">{c.shares ?? "–"}</td>
-                  <td className="num px-3 py-2">{usd(c.riskUsd)}</td>
-                  <td className="num px-3 py-2">{usd(c.positionUsd, 0)}</td>
-                  <td className="px-3 py-2">
-                    {c.tradeable ? <Pill tone="up">tradeable</Pill> : (
-                      <div className="space-y-1">
-                        <Pill tone="warn">rejected</Pill>
-                        <ul className="text-xs text-muted">{c.reasons.map((r) => <li key={r}>{r}</li>)}</ul>
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    {c.status === "new" && c.tradeable && PULLBACK_APPROVALS_PAUSED ? (
-                      <span className="text-xs text-muted">paused</span>
-                    ) : c.status === "new" && c.tradeable ? (
-                      <div className="flex gap-2">
-                        <form action={approveCandidate}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <button type="submit" className="rounded bg-accent px-2.5 py-1 text-xs font-medium text-white">Approve</button>
-                        </form>
-                        <form action={setCandidateStatus}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <input type="hidden" name="to" value="rejected" />
-                          <button type="submit" className="rounded border border-line px-2.5 py-1 text-xs text-muted">Skip</button>
-                        </form>
-                      </div>
-                    ) : c.status === "approved" ? (
-                      <div className="flex items-center gap-2">
-                        <Pill tone="accent">approved</Pill>
-                        <form action={setCandidateStatus}>
-                          <input type="hidden" name="id" value={c.id} />
-                          <input type="hidden" name="to" value="new" />
-                          <button type="submit" className="text-xs text-muted underline">undo</button>
-                        </form>
-                      </div>
-                    ) : c.status !== "new" ? (
-                      <Pill tone={STATUS_TONE[c.status] ?? "muted"}>{c.status}</Pill>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <p className="text-xs text-muted">Approved setups are sent as bracket orders to the paper account by the pre-open job at 15:00 SAST on weekdays. Unapproved setups expire at the next scan.</p>
+      {SETUPS.map((s) => {
+        const mine = rows.filter((r) => r.setup === s.id);
+        const st = statuses.find((x) => x.id === s.id)!;
+        return (
+          <Card key={s.id} title={`${s.name} · ${mine.length}`} aside={<Pill tone={STAGE[st.stage].tone}>{STAGE[st.stage].label}</Pill>}>
+            {mine.length === 0 ? (
+              <Empty>No signal tonight.</Empty>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-xs uppercase tracking-wide text-muted">
+                    <tr><th className="py-1 pr-3">Symbol</th><th className="py-1 pr-3">Buy</th><th className="py-1 pr-3">Stop</th><th className="py-1 pr-3">Target</th><th className="py-1 pr-3">Why</th><th className="py-1">Order</th></tr>
+                  </thead>
+                  <tbody>
+                    {mine.slice(0, 25).map((r) => {
+                      const p = r.plan as { entryType: string; entry: number; stop: number; targetR: number | null };
+                      const risk = p.entry - p.stop;
+                      const q = queuedSet.get(`${s.id}:${r.symbol}`);
+                      return (
+                        <tr key={r.id} className="border-t border-line align-top">
+                          <td className="num py-2 pr-3 font-medium">{r.symbol}</td>
+                          <td className="num py-2 pr-3">{p.entryType === "open" ? "next open" : `above ${usd(p.entry)}`}</td>
+                          <td className="num py-2 pr-3 text-down">{usd(p.stop)} <span className="text-xs text-muted">{((risk / p.entry) * 100).toFixed(1)}%</span></td>
+                          <td className="num py-2 pr-3 text-up">{p.targetR === null ? setupById(s.id)?.id === "oversold" ? "first strong close" : "none" : usd(p.entry + p.targetR * risk)}</td>
+                          <td className="max-w-sm py-2 pr-3 text-xs text-muted">{r.why}</td>
+                          <td className="py-2">{q ? <Pill tone="accent">{q.shares} sh · {q.status}</Pill> : <span className="text-xs text-muted">tracked</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {mine.length > 25 && <p className="mt-2 text-xs text-muted">Showing the top 25 by the setup&apos;s own ranking. All {mine.length} are tracked.</p>}
+              </div>
+            )}
+          </Card>
+        );
+      })}
     </Shell>
   );
 }
@@ -113,8 +80,8 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Candidates</h1>
-        <p className="mt-1 text-sm text-muted">The latest pullback setups, planned and sized to the account rules.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">Signals</h1>
+        <p className="mt-1 text-sm text-muted">Tonight&apos;s signals from every setup, across the whole market.</p>
       </div>
       {children}
     </div>

@@ -1,143 +1,75 @@
-import { and, eq, gte, inArray, sql, desc } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { requireDb, schema } from "../db";
 import { ensureSchema } from "../db/migrate";
-import { getDailyBars } from "../alpaca";
+import { alpacaConfigured, getDailyBars } from "../alpaca";
 import { UNIVERSE } from "../universe";
-import { evaluatePullback, explainPullback, MIN_HISTORY } from "../strategy/pullback";
-import { planTrade } from "../planner";
-import { loadSettings } from "../settings";
+import { loadHistory } from "../backtest/data";
 import type { OHLCV } from "../indicators";
+import { refreshUniverse, universeAgeDays, type UniverseSummary } from "./universe";
+import { backfillHistory, type BackfillSummary } from "./backfill";
+import { trackSetups, type TrackSummary } from "../setups/run";
+import { autoPaper, type AutoPaperSummary } from "../setups/paper";
 
 export type AfterCloseSummary = {
-  tradeDate: string | null;
+  universe?: UniverseSummary | { error: string };
   symbols: number;
-  barsFetched: number;
   barsUpserted: number;
-  withEnoughHistory: number;
-  passedSetup: number;
-  candidates: number;
-  tradeable: number;
-  skippedReasons: Record<string, number>;
+  backfill?: BackfillSummary;
+  track?: TrackSummary;
+  paper?: AutoPaperSummary | { error: string };
+  seconds: number;
 };
 
-const isoDaysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
-const isoToday = () => new Date().toISOString().slice(0, 10);
-
 /**
- * Nightly job: make sure the schema exists, sync daily bars, run the scanner, store ranked candidates.
- * Position management and stale-order cleanup join this job in milestone 4.
+ * Nightly job after the US close:
+ *  1. rebuild the whole-market universe once a week
+ *  2. bring every symbol's prices up to date
+ *  3. load missing history within a time budget (new symbols catch up over a few nights)
+ *  4. move every setup's forward record on and record today's signals
+ *  5. queue paper trades for setups that have earned it
  */
 export async function runAfterClose(): Promise<AfterCloseSummary> {
+  const t0 = Date.now();
   await ensureSchema();
   const db = requireDb();
-  const settings = await loadSettings();
+  const out: AfterCloseSummary = { symbols: 0, barsUpserted: 0, seconds: 0 };
 
-  // 1. Universe
-  await db
-    .insert(schema.symbols)
-    .values(UNIVERSE.map((u) => ({ symbol: u.symbol, name: u.name, kind: u.kind, active: true })))
-    .onConflictDoNothing();
-  const active = (await db.select({ symbol: schema.symbols.symbol }).from(schema.symbols).where(eq(schema.symbols.active, true))).map((r) => r.symbol);
-
-  // 2. Incremental sync. Symbols with no history get 460 calendar days (about 320 trading days).
-  const latest = await db
-    .select({ symbol: schema.bars.symbol, last: sql<string>`max(${schema.bars.date})` })
-    .from(schema.bars)
-    .groupBy(schema.bars.symbol);
-  const lastBySymbol = new Map(latest.map((r) => [r.symbol, r.last]));
-  const fresh = active.filter((s) => !lastBySymbol.has(s));
-  const existing = active.filter((s) => lastBySymbol.has(s));
-  const today = isoToday();
-
-  let barsFetched = 0;
-  let barsUpserted = 0;
-  const upsert = async (fetched: Record<string, OHLCV[]>) => {
-    const rows: (typeof schema.bars.$inferInsert)[] = [];
-    for (const [symbol, list] of Object.entries(fetched)) {
-      for (const b of list) rows.push({ symbol, date: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: Math.round(b.volume) });
+  await db.insert(schema.symbols).values(UNIVERSE.map((u) => ({ symbol: u.symbol, name: u.name, kind: u.kind, active: true }))).onConflictDoNothing();
+  if (alpacaConfigured()) {
+    const age = await universeAgeDays();
+    if (age === null || age >= 6) {
+      try { out.universe = await refreshUniverse(); } catch (e) { out.universe = { error: e instanceof Error ? e.message : String(e) }; }
     }
-    barsFetched += rows.length;
-    for (let i = 0; i < rows.length; i += 1000) {
-      const chunk = rows.slice(i, i + 1000);
-      await db
-        .insert(schema.bars)
-        .values(chunk)
-        .onConflictDoUpdate({
-          target: [schema.bars.symbol, schema.bars.date],
-          set: {
-            open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume`,
-          },
-        });
-      barsUpserted += chunk.length;
-    }
-  };
+  }
 
-  if (fresh.length) await upsert(await getDailyBars(fresh, isoDaysAgo(460), today));
+  const active = (await db.select({ s: schema.symbols.symbol }).from(schema.symbols).where(eq(schema.symbols.active, true))).map((r) => r.s);
+  out.symbols = active.length;
+  const withBars = new Set((await db.select({ s: schema.bars.symbol }).from(schema.bars).groupBy(schema.bars.symbol)).map((r) => r.s));
+  const existing = active.filter((s) => withBars.has(s));
+
+  // Last ten days for symbols that already have history; late corrections land too.
   if (existing.length) {
-    // Refetch from the oldest "last bar" among existing symbols, minus a few days, so late corrections land too.
-    const oldest = [...lastBySymbol.values()].sort()[0];
-    const start = new Date(new Date(oldest).getTime() - 5 * 86_400_000).toISOString().slice(0, 10);
-    await upsert(await getDailyBars(existing, start, today));
-  }
-
-  // 3. Load history and scan
-  const cutoff = isoDaysAgo(420);
-  const history = await db
-    .select()
-    .from(schema.bars)
-    .where(and(gte(schema.bars.date, cutoff), inArray(schema.bars.symbol, active)))
-    .orderBy(schema.bars.symbol, schema.bars.date);
-
-  const bySymbol = new Map<string, OHLCV[]>();
-  let tradeDate: string | null = null;
-  for (const r of history) {
-    (bySymbol.get(r.symbol) ?? bySymbol.set(r.symbol, []).get(r.symbol)!).push(r);
-    if (!tradeDate || r.date > tradeDate) tradeDate = r.date;
-  }
-
-  const skippedReasons: Record<string, number> = {};
-  let withEnoughHistory = 0;
-  let passedSetup = 0;
-  const found: (typeof schema.candidates.$inferInsert)[] = [];
-
-  if (tradeDate) {
-    for (const [symbol, list] of bySymbol) {
-      if (list.length < MIN_HISTORY || list[list.length - 1].date !== tradeDate) continue;
-      withEnoughHistory++;
-      const setup = evaluatePullback(list);
-      if (!setup.ok) {
-        const key = setup.reason;
-        skippedReasons[key] = (skippedReasons[key] ?? 0) + 1;
-        continue;
-      }
-      passedSetup++;
-      const plan = planTrade(setup, settings);
-      found.push({
-        scanId: 0, tradeDate, symbol, close: setup.close, score: setup.score,
-        entry: plan.entry, stop: plan.stop, target: plan.target, shares: plan.shares,
-        riskUsd: plan.riskUsd, positionUsd: plan.positionUsd, tradeable: plan.tradeable, reasons: plan.reasons, status: "new",
-        why: explainPullback(setup, plan.entry, plan.stop),
+    const start = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    const fetched = await getDailyBars(existing, start, new Date().toISOString().slice(0, 10));
+    const rows: (typeof schema.bars.$inferInsert)[] = [];
+    for (const [symbol, list] of Object.entries(fetched)) for (const b of list as OHLCV[]) rows.push({ symbol, date: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: Math.round(b.volume) });
+    for (let i = 0; i < rows.length; i += 2000) {
+      await db.insert(schema.bars).values(rows.slice(i, i + 2000)).onConflictDoUpdate({
+        target: [schema.bars.symbol, schema.bars.date],
+        set: { open: sql`excluded.open`, high: sql`excluded.high`, low: sql`excluded.low`, close: sql`excluded.close`, volume: sql`excluded.volume` },
       });
     }
-    found.sort((a, b) => Number(b.tradeable) - Number(a.tradeable) || b.score - a.score);
-
-    // Replace earlier candidates that were never acted on, including approvals the pre-open job never sent.
-    await db.update(schema.candidates).set({ status: "expired" }).where(inArray(schema.candidates.status, ["new", "approved"]));
-    const [scan] = await db
-      .insert(schema.scans)
-      .values({ tradeDate, universeSize: active.length, withEnoughHistory, passedFilters: passedSetup, candidateCount: found.length })
-      .returning({ id: schema.scans.id });
-    if (found.length) await db.insert(schema.candidates).values(found.map((c) => ({ ...c, scanId: scan.id })));
+    out.barsUpserted = rows.length;
   }
 
-  return {
-    tradeDate, symbols: active.length, barsFetched, barsUpserted, withEnoughHistory, passedSetup,
-    candidates: found.length, tradeable: found.filter((c) => c.tradeable).length, skippedReasons,
-  };
-}
+  // Whatever time is left before ~2.5 minutes goes to loading missing history.
+  const left = 150_000 - (Date.now() - t0);
+  if (left > 20_000) out.backfill = await backfillHistory(left);
 
-export async function latestScan() {
-  const db = requireDb();
-  const rows = await db.select().from(schema.scans).orderBy(desc(schema.scans.id)).limit(1);
-  return rows[0] ?? null;
+  const since = new Date(Date.now() - 460 * 86_400_000).toISOString().slice(0, 10);
+  const history = await loadHistory(db, active, since);
+  out.track = await trackSetups(history);
+  try { out.paper = await autoPaper(); } catch (e) { out.paper = { error: e instanceof Error ? e.message : String(e) }; }
+  out.seconds = Math.round((Date.now() - t0) / 1000);
+  return out;
 }

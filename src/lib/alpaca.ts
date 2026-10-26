@@ -73,7 +73,9 @@ export async function getDailyBars(symbolList: string[], start: string, end: str
 
 // Order endpoints, used from milestone 3 onward.
 export type BracketOrderRequest = {
-  symbol: string; qty: number; entryStop: number; entryLimit: number; takeProfit: number; stopLoss: number; clientOrderId: string;
+  symbol: string; qty: number; entryStop: number; entryLimit: number; takeProfit: number | null; stopLoss: number; clientOrderId: string;
+  /** "stop": buy on a rise through entryStop (good till cancelled). "open": buy at the next open (day order). */
+  entryType?: "stop" | "open";
 };
 
 export async function submitBracketOrder(o: BracketOrderRequest): Promise<{ id: string; status: string }> {
@@ -81,9 +83,15 @@ export async function submitBracketOrder(o: BracketOrderRequest): Promise<{ id: 
     method: "POST",
     headers: { ...headers(), "content-type": "application/json" },
     body: JSON.stringify({
-      symbol: o.symbol, qty: String(o.qty), side: "buy", type: "stop_limit", time_in_force: "gtc",
-      stop_price: o.entryStop.toFixed(2), limit_price: o.entryLimit.toFixed(2), order_class: "bracket",
-      take_profit: { limit_price: o.takeProfit.toFixed(2) }, stop_loss: { stop_price: o.stopLoss.toFixed(2) },
+      symbol: o.symbol, qty: String(o.qty), side: "buy",
+      ...(o.entryType === "open"
+        ? { type: "market", time_in_force: "day" }
+        : { type: "stop_limit", time_in_force: "gtc", stop_price: o.entryStop.toFixed(2), limit_price: o.entryLimit.toFixed(2) }),
+      // With no target, the order only attaches a stop loss (one-triggers-other).
+      ...(o.takeProfit !== null
+        ? { order_class: "bracket", take_profit: { limit_price: o.takeProfit.toFixed(2) } }
+        : { order_class: "oto" }),
+      stop_loss: { stop_price: o.stopLoss.toFixed(2) },
       client_order_id: o.clientOrderId,
     }),
   });
@@ -114,4 +122,11 @@ export async function submitMarketOrder(symbol: string, qty: number, side: "buy"
 
 export function submitMarketSell(symbol: string, qty: number, clientOrderId: string) {
   return submitMarketOrder(symbol, qty, "sell", clientOrderId);
+}
+
+export type AlpacaAsset = { symbol: string; name: string; exchange: string; tradable: boolean; status: string; fractionable?: boolean };
+
+/** Every active US equity Alpaca lists (stocks and ETFs). */
+export async function getAssets(): Promise<AlpacaAsset[]> {
+  return get(`${alpacaBaseUrl()}/v2/assets?status=active&asset_class=us_equity`);
 }

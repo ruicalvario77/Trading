@@ -6,7 +6,7 @@ import type { Trade } from "./db/schema";
 const base: Trade = {
   id: 1, candidateId: 1, symbol: "U", setup: "pullback", status: "pending_entry",
   plannedEntry: 41.77, plannedStop: 39.09, plannedTarget: 47.13, shares: 2, riskUsd: 5.36, currentStop: 39.09,
-  breakevenMoved: false, brokerOrderId: "abc", exitOrderId: null, entryFill: null, enteredAt: null, exitFill: null, exitedAt: null,
+  breakevenMoved: false, brokerOrderId: "abc", exitOrderId: null, plan: null, entryFill: null, enteredAt: null, exitFill: null, exitedAt: null,
   exitReason: null, pnlUsd: null, rMultiple: null, createdAt: new Date(), updatedAt: new Date(),
 };
 const leg = (type: string, status: string, px: string | null = null) => ({ id: type, type, status, filled_avg_price: px, filled_at: px ? "2026-10-28T15:00:00Z" : null });

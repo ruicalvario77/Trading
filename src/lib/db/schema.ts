@@ -24,6 +24,9 @@ export const symbols = pgTable("symbols", {
   name: text("name"),
   kind: text("kind").notNull().default("stock"), // stock | etf
   active: boolean("active").notNull().default(true),
+  avgDollarVolume: doublePrecision("avg_dollar_volume"),
+  lastClose: doublePrecision("last_close"),
+  refreshedAt: timestamp("refreshed_at", { withTimezone: true }),
 });
 
 export const bars = pgTable(
@@ -68,6 +71,8 @@ export const candidates = pgTable(
     tradeable: boolean("tradeable").notNull(),
     reasons: jsonb("reasons").$type<string[]>().notNull(),
     why: text("why"),
+    setup: text("setup"),
+    plan: jsonb("plan").$type<Record<string, unknown>>(),
     status: text("status").notNull().default("new"), // new | approved | rejected | ordered | expired
   },
   (t) => [index("candidates_trade_date_idx").on(t.tradeDate)],
@@ -81,13 +86,14 @@ export const trades = pgTable("trades", {
   status: text("status").notNull(), // pending_entry | open | closed | cancelled
   plannedEntry: doublePrecision("planned_entry").notNull(),
   plannedStop: doublePrecision("planned_stop").notNull(),
-  plannedTarget: doublePrecision("planned_target").notNull(),
+  plannedTarget: doublePrecision("planned_target"), // null when the setup has no target
   shares: integer("shares").notNull(),
   riskUsd: doublePrecision("risk_usd").notNull(),
   currentStop: doublePrecision("current_stop").notNull(),
   breakevenMoved: boolean("breakeven_moved").notNull().default(false),
   brokerOrderId: text("broker_order_id"),
   exitOrderId: text("exit_order_id"),
+  plan: jsonb("plan").$type<Record<string, unknown>>(),
   entryFill: doublePrecision("entry_fill"),
   enteredAt: timestamp("entered_at", { withTimezone: true }),
   exitFill: doublePrecision("exit_fill"),
@@ -185,6 +191,37 @@ export const loopResearch = pgTable("loop_research", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   results: jsonb("results").$type<unknown>().notNull(),
 });
+
+// Whole-market setups
+export const setupRuns = pgTable("setup_runs", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  results: jsonb("results").$type<unknown>().notNull(),
+});
+
+/** Every signal every setup gives, followed forward with the same rules as the backtest. No orders. */
+export const shadowSignals = pgTable(
+  "shadow_signals",
+  {
+    id: serial("id").primaryKey(),
+    setup: text("setup").notNull(),
+    version: text("version").notNull(),
+    symbol: text("symbol").notNull(),
+    signalDate: date("signal_date").notNull(),
+    plan: jsonb("plan").$type<Record<string, unknown>>().notNull(),
+    score: doublePrecision("score").notNull(),
+    why: text("why"),
+    status: text("status").notNull(), // pending | open | closed | unfilled
+    entryDate: date("entry_date"),
+    exitDate: date("exit_date"),
+    entry: doublePrecision("entry"),
+    exit: doublePrecision("exit"),
+    r: doublePrecision("r"),
+    reason: text("reason"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("shadow_status_idx").on(t.status), index("shadow_date_idx").on(t.signalDate)],
+);
 
 export const jobRuns = pgTable("job_runs", {
   id: serial("id").primaryKey(),
