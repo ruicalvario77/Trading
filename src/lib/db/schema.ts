@@ -40,7 +40,7 @@ export const bars = pgTable(
     close: doublePrecision("close").notNull(),
     volume: bigint("volume", { mode: "number" }).notNull(),
   },
-  (t) => [primaryKey({ columns: [t.symbol, t.date] }), index("bars_date_idx").on(t.date)],
+  (t) => [primaryKey({ columns: [t.symbol, t.date] })],
 );
 
 export const scans = pgTable("scans", {

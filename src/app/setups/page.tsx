@@ -1,5 +1,5 @@
 import { desc, eq, sql } from "drizzle-orm";
-import { getDb, schema } from "@/lib/db";
+import { getDb, rawSql, schema } from "@/lib/db";
 import { ensureSchema } from "@/lib/db/migrate";
 import { SETUPS } from "@/lib/setups/library";
 import { setupStatuses, MIN_FORWARD_TRADES, type Stage } from "@/lib/setups/paper";
@@ -33,6 +33,8 @@ export default async function SetupsPage({ searchParams }: { searchParams: Promi
   const r = (sel?.results as SetupRunResults | undefined) ?? latestRun?.results;
   const runId = sel?.id ?? latestRun?.id;
   const historyDone = bf.n >= uni.n && uni.n > 0;
+  const [size] = (await rawSql().query("SELECT pg_database_size(current_database())::float8 AS b")) as { b: number }[];
+  const usedMb = size.b / 1024 / 1024;
   const recentRuns = await db.select({ id: schema.setupRuns.id, createdAt: schema.setupRuns.createdAt }).from(schema.setupRuns).orderBy(desc(schema.setupRuns.id)).limit(5);
 
   return (
@@ -57,6 +59,9 @@ export default async function SetupsPage({ searchParams }: { searchParams: Promi
           <p className="mt-3 text-sm text-muted">
             Every US stock and ETF at ${MIN_PRICE} or more, trading at least ${(MIN_DOLLAR_VOLUME / 1e6).toFixed(0)} million a day. Rebuilt weekly.
             {" "}{uni.at ? `Last rebuilt ${new Date(uni.at).toLocaleDateString("en-ZA")}.` : "Not built yet."} {MARKET_HISTORY_YEARS} years of history per symbol.
+          </p>
+          <p className={`mt-2 text-sm ${usedMb > 430 ? "text-down" : usedMb > 380 ? "text-warn" : "text-muted"}`}>
+            Database: {usedMb.toFixed(0)} MB of the free plan&apos;s 512 MB.{usedMb > 430 ? " Nearly full: new prices will stop saving soon." : ""}
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
             <form action="/api/universe" method="post"><button type="submit" className="rounded border border-line px-3 py-1.5 text-xs">Rebuild universe now</button></form>

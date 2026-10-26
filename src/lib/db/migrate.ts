@@ -34,7 +34,8 @@ const statements = [
     volume bigint NOT NULL,
     PRIMARY KEY (symbol, date)
   )`,
-  `CREATE INDEX IF NOT EXISTS bars_date_idx ON bars (date)`,
+  // Dropped to save space on the free database: no query needs bars by date alone across all symbols.
+  `DROP INDEX IF EXISTS bars_date_idx`,
   `CREATE TABLE IF NOT EXISTS scans (
     id serial PRIMARY KEY,
     trade_date date NOT NULL,
