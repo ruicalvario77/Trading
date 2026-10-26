@@ -94,6 +94,17 @@ const statements = [
     note text,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS app_migrations (
+    name text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now()
+  )`,
+  // One-time: the first default volume threshold (1,000,000) assumed consolidated volume, but the free
+  // IEX feed reports about 2-3% of that. Move an untouched default to the IEX-calibrated value once.
+  `WITH m AS (
+    INSERT INTO app_migrations (name) VALUES ('iex_volume_threshold') ON CONFLICT DO NOTHING RETURNING name
+  )
+  UPDATE settings SET min_avg_volume = 25000, updated_at = now()
+  WHERE min_avg_volume = 1000000 AND EXISTS (SELECT 1 FROM m)`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,

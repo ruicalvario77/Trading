@@ -36,7 +36,7 @@ test("stops wider than 8% are rejected", () => {
 
 test("illiquid or out-of-band prices are rejected", () => {
   const plan = planTrade(
-    { close: 80, todayHigh: 80, pullbackLow: 78, atr14: 1, avgVolume20: 200_000 },
+    { close: 80, todayHigh: 80, pullbackLow: 78, atr14: 1, avgVolume20: 10_000 },
     DEFAULT_RULES,
   );
   assert.equal(plan.tradeable, false);

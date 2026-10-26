@@ -106,7 +106,7 @@ export async function runAfterClose(): Promise<AfterCloseSummary> {
       withEnoughHistory++;
       const setup = evaluatePullback(list);
       if (!setup.ok) {
-        const key = setup.reason.replace(/\d+/g, "n");
+        const key = setup.reason;
         skippedReasons[key] = (skippedReasons[key] ?? 0) + 1;
         continue;
       }
