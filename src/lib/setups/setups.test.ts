@@ -61,3 +61,18 @@ test("every setup runs over a long random series without errors", () => {
     assert.ok(funnel.entered === trades.length, s.id);
   }
 });
+
+test("forward record: pending, open and closed states, and only changes count", async () => {
+  const { shadowNext, shadowBatchRows } = await import("./run");
+  const p: Plan = { entryType: "stop", entry: 50.55, stop: 49, targetR: 1, timeStopDays: 10, exitOnStrongClose: false, score: 1, why: "" };
+  const base = flat(5);
+  assert.equal(shadowNext(base, 4, p).status, "pending");
+  const opened = [...base, bar("a", 50.6, 50.9, 50.4, 50.8)];
+  const o = shadowNext(opened, 4, p);
+  assert.equal(o.status, "open");
+  assert.equal(o.entryDate, "a");
+  const closed = [...opened, bar("b", 50.9, 53, 50.7, 52.8)];
+  assert.equal(shadowNext(closed, 4, p).status, "closed");
+  const rows = shadowBatchRows([{ id: 7, status: "unfilled" }]);
+  assert.deepEqual(rows[0], { id: 7, status: "unfilled", entry_date: null, exit_date: null, entry: null, exit: null, r: null, reason: null });
+});

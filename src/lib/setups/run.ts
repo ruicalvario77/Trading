@@ -1,5 +1,5 @@
 import { eq, gte, inArray } from "drizzle-orm";
-import { requireDb, schema, type Db } from "../db";
+import { rawSql, requireDb, schema, type Db } from "../db";
 import { ensureSchema } from "../db/migrate";
 import { loadSettings } from "../settings";
 import { loadHistory } from "../backtest/data";
@@ -113,23 +113,22 @@ export async function trackSetups(history?: Map<string, OHLCV[]>): Promise<Track
   const since = new Date(Date.now() - 460 * 86_400_000).toISOString().slice(0, 10);
   const bars = history ?? (await loadHistory(db, await activeSymbols(db), since));
 
-  // 1. Follow live signals forward.
+  // 1. Follow live signals forward. Only changes are written, in batches, so the nightly job stays fast as the
+  // record grows (thousands of signals can be live at once).
   const live = await db.select().from(schema.shadowSignals).where(inArray(schema.shadowSignals.status, ["pending", "open"]));
+  const changes: ShadowChange[] = [];
   for (const s of live) {
     const b = bars.get(s.symbol);
     if (!b) continue;
     const i = b.findIndex((x) => x.date === s.signalDate);
     if (i < 0) continue;
-    const o = runPlan(b, i, s.plan as unknown as Plan, false);
-    const next =
-      o.status === "unfilled" ? { status: "unfilled" } :
-      o.status === "open" ? (o.f < 0 ? { status: "pending" } : { status: "open", entryDate: b[o.f].date, entry: o.entry }) :
-      { status: "closed", entryDate: b[o.f].date, exitDate: b[o.x].date, entry: o.entry, exit: o.exit, r: o.r, reason: o.reason };
-    if (next.status === s.status && next.status !== "open") continue;
-    await db.update(schema.shadowSignals).set({ ...next, updatedAt: new Date() }).where(eq(schema.shadowSignals.id, s.id));
-    out.updated++;
+    const next = shadowNext(b, i, s.plan as unknown as Plan);
+    if (next.status === s.status) continue; // still pending, or still open with the same entry
+    changes.push({ id: s.id, ...next });
     if (next.status === "closed") out.closed++;
   }
+  await applyShadowChanges(changes);
+  out.updated = changes.length;
 
   // 2. Record today's signals.
   const spy = bars.get("SPY");
@@ -176,3 +175,44 @@ export async function forwardStats(db: Db): Promise<ForwardStats[]> {
   });
 }
 
+
+export type ShadowChange = {
+  id: number;
+  status: string;
+  entryDate?: string | null;
+  exitDate?: string | null;
+  entry?: number | null;
+  exit?: number | null;
+  r?: number | null;
+  reason?: string | null;
+};
+
+/** Where a recorded signal stands after the newest bars. */
+export function shadowNext(b: OHLCV[], i: number, p: Plan): Omit<ShadowChange, "id"> {
+  const o = runPlan(b, i, p, false);
+  if (o.status === "unfilled") return { status: "unfilled" };
+  if (o.status === "open") return o.f < 0 ? { status: "pending" } : { status: "open", entryDate: b[o.f].date, entry: o.entry };
+  return { status: "closed", entryDate: b[o.f].date, exitDate: b[o.x].date, entry: o.entry, exit: o.exit, r: o.r, reason: o.reason };
+}
+
+/** The UPDATE used for a batch of changes, exported so it can be tested against a real Postgres. */
+export const SHADOW_BATCH_SQL = `UPDATE shadow_signals AS t SET
+    status = v.status, entry_date = v.entry_date, exit_date = v.exit_date,
+    entry = v.entry, exit = v.exit, r = v.r, reason = v.reason, updated_at = now()
+  FROM jsonb_to_recordset($1::jsonb) AS v(id int, status text, entry_date date, exit_date date, entry float8, exit float8, r float8, reason text)
+  WHERE t.id = v.id`;
+
+export function shadowBatchRows(changes: ShadowChange[]) {
+  return changes.map((c) => ({
+    id: c.id, status: c.status, entry_date: c.entryDate ?? null, exit_date: c.exitDate ?? null,
+    entry: c.entry ?? null, exit: c.exit ?? null, r: c.r ?? null, reason: c.reason ?? null,
+  }));
+}
+
+async function applyShadowChanges(changes: ShadowChange[]): Promise<void> {
+  if (!changes.length) return;
+  const sqlClient = rawSql();
+  for (let k = 0; k < changes.length; k += 500) {
+    await sqlClient.query(SHADOW_BATCH_SQL, [JSON.stringify(shadowBatchRows(changes.slice(k, k + 500)))]);
+  }
+}
