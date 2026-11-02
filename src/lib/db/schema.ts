@@ -223,6 +223,36 @@ export const shadowSignals = pgTable(
   (t) => [index("shadow_status_idx").on(t.status), index("shadow_date_idx").on(t.signalDate)],
 );
 
+// Day trading research
+export const intradayRuns = pgTable("intraday_runs", {
+  id: serial("id").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  results: jsonb("results").$type<unknown>().notNull(),
+});
+
+/** Every intraday setup's trade on every recorded session, replayed the next morning. No orders. */
+export const intradayForward = pgTable("intraday_forward", {
+  id: serial("id").primaryKey(),
+  setup: text("setup").notNull(),
+  version: text("version").notNull(),
+  symbol: text("symbol").notNull(),
+  date: date("date").notNull(),
+  entryM: integer("entry_m").notNull(),
+  exitM: integer("exit_m").notNull(),
+  entry: doublePrecision("entry").notNull(),
+  exit: doublePrecision("exit").notNull(),
+  stop: doublePrecision("stop").notNull(),
+  r: doublePrecision("r").notNull(),
+  reason: text("reason").notNull(),
+});
+
+export const intradayDays = pgTable("intraday_days", {
+  date: date("date").primaryKey(),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  symbols: integer("symbols").notNull(),
+  trades: integer("trades").notNull(),
+});
+
 export const jobRuns = pgTable("job_runs", {
   id: serial("id").primaryKey(),
   job: text("job").notNull(),

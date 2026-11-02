@@ -12,6 +12,7 @@ const nav = [
   { href: "/loop", label: "Loop" },
   { href: "/setups", label: "Setups" },
   { href: "/candidates", label: "Signals" },
+  { href: "/daytrade", label: "Day trading" },
   { href: "/positions", label: "Positions" },
   { href: "/journal", label: "Journal" },
   { href: "/backtest", label: "Backtest" },

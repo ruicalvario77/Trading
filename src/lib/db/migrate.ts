@@ -222,6 +222,32 @@ const statements = [
   `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS plan jsonb`,
   `ALTER TABLE trades ADD COLUMN IF NOT EXISTS plan jsonb`,
   `ALTER TABLE trades ALTER COLUMN planned_target DROP NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS intraday_runs (
+    id serial PRIMARY KEY,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    results jsonb NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS intraday_forward (
+    id serial PRIMARY KEY,
+    setup text NOT NULL,
+    version text NOT NULL,
+    symbol text NOT NULL,
+    date date NOT NULL,
+    entry_m integer NOT NULL,
+    exit_m integer NOT NULL,
+    entry double precision NOT NULL,
+    exit double precision NOT NULL,
+    stop double precision NOT NULL,
+    r double precision NOT NULL,
+    reason text NOT NULL,
+    UNIQUE (setup, version, symbol, date)
+  )`,
+  `CREATE TABLE IF NOT EXISTS intraday_days (
+    date date PRIMARY KEY,
+    recorded_at timestamptz NOT NULL DEFAULT now(),
+    symbols integer NOT NULL,
+    trades integer NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,

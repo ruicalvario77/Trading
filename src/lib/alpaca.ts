@@ -130,3 +130,44 @@ export type AlpacaAsset = { symbol: string; name: string; exchange: string; trad
 export async function getAssets(): Promise<AlpacaAsset[]> {
   return get(`${alpacaBaseUrl()}/v2/assets?status=active&asset_class=us_equity`);
 }
+
+/** One intraday bar: start time in epoch milliseconds (UTC). */
+export type IntradayBar = { ts: number; o: number; h: number; l: number; c: number; v: number };
+
+/**
+ * Five-minute bars for many symbols, full-market data, split-adjusted. Includes pre- and post-market bars;
+ * `keep` filters them while parsing so large requests do not hold the whole day in memory. Retries politely
+ * when the free plan's 200 requests a minute is reached.
+ */
+export async function getIntradayBars(
+  symbolList: string[], start: string, end: string, keep: (ts: number) => boolean = () => true,
+): Promise<Record<string, IntradayBar[]>> {
+  const out: Record<string, IntradayBar[]> = {};
+  const latest = Date.now() - 20 * 60_000;
+  const safeEnd = new Date(Math.min(Date.parse(end), latest)).toISOString();
+  for (let i = 0; i < symbolList.length; i += 100) {
+    const syms = symbolList.slice(i, i + 100).join(",");
+    let token: string | null = null;
+    do {
+      const params = new URLSearchParams({ symbols: syms, timeframe: "5Min", start, end: safeEnd, limit: "10000", adjustment: "split", feed: DATA_FEED, sort: "asc" });
+      if (token) params.set("page_token", token);
+      let page: { bars: Record<string, RawBar[]> | null; next_page_token: string | null } | null = null;
+      for (let attempt = 0; attempt < 6 && !page; attempt++) {
+        const res = await fetch(`${DATA_URL}/v2/stocks/bars?${params.toString()}`, { headers: headers(), cache: "no-store" });
+        if (res.status === 429) { await new Promise((r) => setTimeout(r, 4000 * (attempt + 1))); continue; }
+        if (!res.ok) throw new Error(`Alpaca ${res.status} for intraday bars: ${(await res.text()).slice(0, 300)}`);
+        page = await res.json();
+      }
+      if (!page) throw new Error("Alpaca rate limit: intraday bars still refused after retries");
+      for (const [sym, raw] of Object.entries(page.bars ?? {})) {
+        const list = (out[sym] ??= []);
+        for (const b of raw) {
+          const ts = Date.parse(b.t);
+          if (keep(ts)) list.push({ ts, o: b.o, h: b.h, l: b.l, c: b.c, v: b.v });
+        }
+      }
+      token = page.next_page_token;
+    } while (token);
+  }
+  return out;
+}

@@ -5,6 +5,7 @@ import { runAfterClose } from "./afterClose";
 import { applyTimeStops, placeApproved, syncTrades } from "./orders";
 import { loadSettings } from "../settings";
 import { loopDaily } from "../loop/run";
+import { recordIntradayForward } from "../intraday/run";
 
 export type JobName = "after-close" | "pre-open";
 
@@ -27,7 +28,10 @@ export async function runJob(job: JobName): Promise<{ ok: boolean; summary?: unk
     } else {
       const sync = await syncTrades();
       const place = await placeApproved(await loadSettings());
-      summary = { sync, place };
+      // Replays yesterday's session with the intraday setups. It must never stop order placement.
+      let intraday: unknown;
+      try { intraday = await recordIntradayForward(); } catch (e) { intraday = { error: e instanceof Error ? e.message : String(e) }; }
+      summary = { sync, place, intraday };
     }
     await db.update(schema.jobRuns).set({ ok: true, finishedAt: new Date(), summary }).where(eq(schema.jobRuns.id, run.id));
     return { ok: true, summary, runId: run.id };
