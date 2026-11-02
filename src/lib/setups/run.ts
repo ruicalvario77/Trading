@@ -7,7 +7,7 @@ import { summarizeR, type RStats } from "../stats";
 import type { OHLCV } from "../indicators";
 import { marketHistoryStart } from "../jobs/universe";
 import { SETUPS, MIN_BARS, marketCtx, prepare, type Plan } from "./library";
-import { backtestSymbol, dailyT, judge, planProblem, runPlan, luckBarT, type SetupFunnel, type SetupTrade, type SetupVerdict } from "./engine";
+import { backtestSymbol, dailyT, judge, planProblem, runPlan, luckBarT, ENTRY_WINDOW_DAYS, type SetupFunnel, type SetupTrade, type SetupVerdict } from "./engine";
 
 export type SetupResult = {
   id: string;
@@ -154,7 +154,49 @@ export async function trackSetups(history?: Map<string, OHLCV[]>): Promise<Track
   return out;
 }
 
-export type ForwardStats = { id: string; version: string; signals: number; open: number; closed: RStats; t: number; firstDate: string | null };
+export type ForwardStats = {
+  id: string;
+  version: string;
+  signals: number;
+  open: number;
+  /** Every forward trade closed so far. Early on this is mostly stop-outs, because stops are hit sooner than targets. */
+  closedSoFar: RStats;
+  /** Only signals old enough that every trade they started has had time to finish. This is what the stage uses. */
+  matured: RStats;
+  maturedT: number;
+  /** Signals on or before this date are complete. */
+  completeThrough: string | null;
+  /** The first day the earliest signal becomes complete, when none is complete yet. */
+  firstCompleteOn: string | null;
+  firstDate: string | null;
+};
+
+type ForwardRow = { status: string; r: number | null; entryDate: string | null; signalDate: string };
+
+const addDays = (d: string, n: number) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** Calendar days for a trade to finish for sure: entry window plus time stop in trading days, with room for holidays. */
+export function completionDays(maxHoldDays: number): number {
+  return Math.ceil(((maxHoldDays + ENTRY_WINDOW_DAYS + 1) * 7) / 5) + 3;
+}
+
+/**
+ * Forward results without the early-close bias: a signal counts only once its whole holding period has passed,
+ * so the quick stop-outs are not judged before the slower winners have had time to reach their targets.
+ */
+export function summarizeForward(rows: ForwardRow[], maxHoldDays: number, latestDate: string | null) {
+  const closed = rows.filter((r) => r.status === "closed" && r.r !== null).sort((a, b) => (a.entryDate ?? "").localeCompare(b.entryDate ?? ""));
+  const completeThrough = latestDate ? addDays(latestDate, -completionDays(maxHoldDays)) : null;
+  const matured = completeThrough ? closed.filter((r) => r.signalDate <= completeThrough) : [];
+  const first = rows.length ? rows.map((r) => r.signalDate).sort()[0] : null;
+  return {
+    closedSoFar: summarizeR(closed.map((r) => r.r!)),
+    matured: summarizeR(matured.map((r) => r.r!)),
+    maturedT: dailyT(matured.map((r) => ({ entryDate: r.entryDate ?? r.signalDate, r: r.r! }))).t,
+    completeThrough: completeThrough && first && first <= completeThrough ? completeThrough : null,
+    firstCompleteOn: first && !(completeThrough && first <= completeThrough) ? addDays(first, completionDays(maxHoldDays)) : null,
+  };
+}
 
 /** Forward results per setup from the shadow record. */
 export async function forwardStats(db: Db): Promise<ForwardStats[]> {
@@ -162,19 +204,17 @@ export async function forwardStats(db: Db): Promise<ForwardStats[]> {
     setup: schema.shadowSignals.setup, version: schema.shadowSignals.version, status: schema.shadowSignals.status,
     r: schema.shadowSignals.r, entryDate: schema.shadowSignals.entryDate, signalDate: schema.shadowSignals.signalDate,
   }).from(schema.shadowSignals).where(gte(schema.shadowSignals.signalDate, "2000-01-01"));
+  const latest = rows.length ? rows.reduce((m, r) => (r.signalDate > m ? r.signalDate : m), rows[0].signalDate) : null;
   return SETUPS.map((s) => {
     const mine = rows.filter((r) => r.setup === s.id && r.version === s.version);
-    const closed = mine.filter((r) => r.status === "closed" && r.r !== null).sort((a, b) => (a.entryDate ?? "").localeCompare(b.entryDate ?? ""));
     return {
       id: s.id, version: s.version, signals: mine.length,
       open: mine.filter((r) => r.status === "open").length,
-      closed: summarizeR(closed.map((r) => r.r!)),
-      t: dailyT(closed.map((r) => ({ entryDate: r.entryDate ?? r.signalDate, r: r.r! }))).t,
+      ...summarizeForward(mine, s.maxHoldDays, latest),
       firstDate: mine.length ? mine.map((r) => r.signalDate).sort()[0] : null,
     };
   });
 }
-
 
 export type ShadowChange = {
   id: number;

@@ -76,3 +76,25 @@ test("forward record: pending, open and closed states, and only changes count", 
   const rows = shadowBatchRows([{ id: 7, status: "unfilled" }]);
   assert.deepEqual(rows[0], { id: 7, status: "unfilled", entry_date: null, exit_date: null, entry: null, exit: null, r: null, reason: null });
 });
+
+test("forward results wait for the full holding period, so early stop-outs do not count alone", async () => {
+  const { summarizeForward, completionDays } = await import("./run");
+  // 30-day setup: completion takes about 50 calendar days.
+  assert.ok(completionDays(30) >= 47 && completionDays(30) <= 55);
+  const young = [
+    { status: "closed", r: -1, entryDate: "2026-10-28", signalDate: "2026-10-27" },
+    { status: "open", r: null, entryDate: "2026-10-28", signalDate: "2026-10-27" },
+  ];
+  const now = summarizeForward(young, 30, "2026-11-02");
+  assert.equal(now.closedSoFar.trades, 1);
+  assert.equal(now.matured.trades, 0, "a one-week-old signal of a 30-day setup is not complete");
+  assert.equal(now.completeThrough, null);
+  assert.ok(now.firstCompleteOn! > "2026-12-01");
+  const later = summarizeForward([
+    { status: "closed", r: -1, entryDate: "2026-10-28", signalDate: "2026-10-27" },
+    { status: "closed", r: 3, entryDate: "2026-10-28", signalDate: "2026-10-27" },
+    { status: "closed", r: -1, entryDate: "2026-12-20", signalDate: "2026-12-19" },
+  ], 30, "2027-01-04");
+  assert.equal(later.matured.trades, 2, "the old cohort counts, the December one does not yet");
+  assert.equal(later.matured.expectancyR, 1);
+});

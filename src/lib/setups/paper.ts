@@ -4,7 +4,9 @@ import { loadSettings } from "../settings";
 import { round2 } from "../indicators";
 import { committedCount, weekPnl } from "../jobs/orders";
 import { limitBlock } from "../trades";
-import { SETUPS, type Plan } from "./library";
+import { SETUPS, setupById, type Plan } from "./library";
+
+const setupHold = (id: string) => setupById(id)?.maxHoldDays ?? 10;
 import { forwardStats, type ForwardStats, type SetupRunResults } from "./run";
 
 /** Forward trades a setup needs before it can paper trade. */
@@ -20,18 +22,21 @@ export async function setupStatuses(db: Db): Promise<{ statuses: SetupStatus[]; 
   const statuses = SETUPS.map((s): SetupStatus => {
     const bt = run?.results.setups.find((x) => x.id === s.id && x.version === s.version);
     const forward = fwd.find((f) => f.id === s.id)!;
-    const n = forward.closed.trades;
+    const n = forward.matured.trades;
     if (!bt) return { id: s.id, version: s.version, stage: "research", detail: "Not backtested yet.", backtestPass: null, forward };
     if (!bt.verdict.pass) {
       return { id: s.id, version: s.version, stage: "failed", detail: `Backtest: ${bt.verdict.reasons.join("; ")}. Still tracked forward, in case it is wrong.`, backtestPass: false, forward };
     }
-    if (n < MIN_FORWARD_TRADES || forward.closed.expectancyR <= 0) {
+    if (n < MIN_FORWARD_TRADES || forward.matured.expectancyR <= 0) {
+      const wait = forward.firstCompleteOn ? ` The first signals finish their full ${setupHold(s.id)}-day holding period around ${forward.firstCompleteOn}.` : "";
       return {
         id: s.id, version: s.version, stage: "forward", backtestPass: true, forward,
-        detail: n < MIN_FORWARD_TRADES ? `Passed the backtest. ${n} of ${MIN_FORWARD_TRADES} forward trades closed.` : `Passed the backtest, but forward trades average ${forward.closed.expectancyR.toFixed(2)}R.`,
+        detail: n < MIN_FORWARD_TRADES
+          ? `Passed the backtest. ${n} of ${MIN_FORWARD_TRADES} complete forward trades.${wait}`
+          : `Passed the backtest, but complete forward trades average ${forward.matured.expectancyR.toFixed(2)}R.`,
       };
     }
-    return { id: s.id, version: s.version, stage: "paper", backtestPass: true, forward, detail: `Passed the backtest and ${n} forward trades average ${forward.closed.expectancyR.toFixed(2)}R. Paper trading.` };
+    return { id: s.id, version: s.version, stage: "paper", backtestPass: true, forward, detail: `Passed the backtest and ${n} complete forward trades average ${forward.matured.expectancyR.toFixed(2)}R. Paper trading.` };
   });
   return { statuses, run };
 }
@@ -46,7 +51,7 @@ export async function autoPaper(): Promise<AutoPaperSummary> {
   const db = requireDb();
   const settings = await loadSettings();
   const { statuses } = await setupStatuses(db);
-  const eligible = statuses.filter((s) => s.stage === "paper").sort((a, b) => b.forward.closed.expectancyR - a.forward.closed.expectancyR);
+  const eligible = statuses.filter((s) => s.stage === "paper").sort((a, b) => b.forward.matured.expectancyR - a.forward.matured.expectancyR);
   const out: AutoPaperSummary = { eligible: eligible.map((s) => s.id), considered: 0, queued: 0, blocked: null };
   if (!eligible.length) return out;
 

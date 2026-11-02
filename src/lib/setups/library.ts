@@ -39,6 +39,8 @@ export type Setup = {
   name: string;
   summary: string;
   rules: string[];
+  /** Longest a trade can last in trading days (its time stop). Forward results are only judged once this has passed. */
+  maxHoldDays: number;
   detect: (d: SymbolData, i: number, ctx: MarketCtx) => Plan | null;
 };
 
@@ -80,7 +82,7 @@ function spyReturn(ctx: MarketCtx, date: string, days: number): number | null {
 
 export const SETUPS: Setup[] = [
   {
-    id: "pullback", version: "v1", name: "Pullback in an uptrend",
+    id: "pullback", version: "v1", maxHoldDays: 10, name: "Pullback in an uptrend",
     summary: "The original setup: an uptrend dips to its 20-day average and turns up.",
     rules: [
       "Close above the 200-day average, 50-day above the 200-day.",
@@ -101,7 +103,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "breakout", version: "v1", name: "Breakout from a tight range",
+    id: "breakout", version: "v1", maxHoldDays: 20, name: "Breakout from a tight range",
     summary: "A stock that went quiet for a month breaks to a 50-day high on heavy volume.",
     rules: [
       "Close above the 200-day average and above the highest high of the previous 50 days.",
@@ -121,7 +123,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "rs-pullback", version: "v1", name: "Pullback in a market leader",
+    id: "rs-pullback", version: "v1", maxHoldDays: 10, name: "Pullback in a market leader",
     summary: "A stock beating the S&P 500 by 15% or more over six months dips and turns up.",
     rules: [
       "Six-month return at least 15 points above SPY's.",
@@ -145,7 +147,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "oversold", version: "v1", name: "Oversold bounce in an uptrend",
+    id: "oversold", version: "v1", maxHoldDays: 7, name: "Oversold bounce in an uptrend",
     summary: "A sharp two-day drop in a stock that is still above its 200-day average.",
     rules: [
       "Close above the 200-day average.",
@@ -162,7 +164,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "gap", version: "v1", name: "Gap up that holds",
+    id: "gap", version: "v1", maxHoldDays: 10, name: "Gap up that holds",
     summary: "A 4% gap up on double volume that closes near the day's high.",
     rules: [
       "Opened at least 4% above yesterday's close, on at least twice the 50-day average volume.",
@@ -181,7 +183,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "nr7", version: "v1", name: "Quiet day in an uptrend",
+    id: "nr7", version: "v1", maxHoldDays: 5, name: "Quiet day in an uptrend",
     summary: "The narrowest day of the last seven, in a stock that is trending up.",
     rules: [
       "Today's high-to-low range is the smallest of the last 7 days.",
@@ -199,7 +201,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "new-high", version: "v1", name: "Near a 52-week high",
+    id: "new-high", version: "v1", maxHoldDays: 30, name: "Near a 52-week high",
     summary: "Momentum: a stock within 2% of its one-year high with a rising 50-day average.",
     rules: [
       "Close within 2% of the highest high of the last 252 days, and higher than yesterday.",
@@ -217,7 +219,7 @@ export const SETUPS: Setup[] = [
     },
   },
   {
-    id: "failed-breakdown", version: "v1", name: "Failed breakdown",
+    id: "failed-breakdown", version: "v1", maxHoldDays: 10, name: "Failed breakdown",
     summary: "Price dips under its 20-day low, then closes back above it: the sellers ran out.",
     rules: [
       "Today's low went below the lowest low of the previous 20 days, but the close finished back above that level.",

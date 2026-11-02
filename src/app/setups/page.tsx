@@ -97,7 +97,7 @@ export default async function SetupsPage({ searchParams }: { searchParams: Promi
                 <th className="py-1 pr-3">Setup</th><th className="py-1 pr-3">Stage</th>
                 <th className="py-1 pr-3">Backtest trades</th><th className="py-1 pr-3">Avg per trade</th><th className="py-1 pr-3">Win rate</th>
                 <th className="py-1 pr-3">Evidence</th><th className="py-1 pr-3">Halves</th>
-                <th className="py-1 pr-3">Forward closed</th><th className="py-1">Forward avg</th>
+                <th className="py-1 pr-3">Forward complete</th><th className="py-1 pr-3">Complete avg</th><th className="py-1">Closed so far</th>
               </tr>
             </thead>
             <tbody>
@@ -113,8 +113,9 @@ export default async function SetupsPage({ searchParams }: { searchParams: Promi
                     <td className="num py-2 pr-3">{bt ? `${(bt.edge.winRate * 100).toFixed(0)}%` : "–"}</td>
                     <td className={`num py-2 pr-3 ${bt && r ? (bt.t >= r.luckBar ? "text-up" : "text-down") : ""}`}>{bt ? bt.t.toFixed(2) : "–"}</td>
                     <td className="num py-2 pr-3">{bt ? `${rr(bt.earlier.expectancyR)} / ${rr(bt.later.expectancyR)}` : "–"}</td>
-                    <td className="num py-2 pr-3">{st.forward.closed.trades} <span className="text-xs text-muted">({st.forward.open} open)</span></td>
-                    <td className="num py-2">{st.forward.closed.trades ? rr(st.forward.closed.expectancyR) : "–"}</td>
+                    <td className="num py-2 pr-3">{st.forward.matured.trades}{!st.forward.completeThrough && st.forward.firstCompleteOn && <span className="block text-xs text-muted">from {st.forward.firstCompleteOn}</span>}</td>
+                    <td className="num py-2 pr-3">{st.forward.matured.trades ? rr(st.forward.matured.expectancyR) : "–"}</td>
+                    <td className="num py-2 text-muted">{st.forward.closedSoFar.trades ? `${st.forward.closedSoFar.trades} · ${rr(st.forward.closedSoFar.expectancyR)}` : "–"} <span className="text-xs">({st.forward.open} open)</span></td>
                   </tr>
                 );
               })}
@@ -124,6 +125,10 @@ export default async function SetupsPage({ searchParams }: { searchParams: Promi
         <p className="mt-3 text-xs text-muted">
           Evidence is the average result divided by its uncertainty, measured per trading day so that trades on the same day are not counted as independent.
           With {SETUPS.length} setups tested at once, a setup needs at least {r ? r.luckBar.toFixed(2) : "2.50"} for its edge not to be luck.
+        </p>
+        <p className="mt-2 text-xs text-muted">
+          Forward complete counts only signals whose full holding period has passed, so every trade they started has finished. &ldquo;Closed so far&rdquo; also
+          includes younger signals; early on that is mostly stop-outs, because stops are reached sooner than targets, so it reads worse than the truth.
         </p>
       </Card>
 
