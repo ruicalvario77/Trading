@@ -76,7 +76,7 @@ export default async function DayTradePage({ searchParams }: { searchParams: Pro
         )}
       </Card>
 
-      <Card title="Setups" aside={r ? <span className="text-xs text-muted">Per-stock backtest {r.from} to {r.to} · {r.symbols} symbols · luck bar {r.luckBar.toFixed(2)}{rv ? ` · in-play backtest ${rv.from} to ${rv.to}` : ""}</span> : null}>
+      <Card title="Setups" aside={r ? <span className="text-xs text-muted">Per-stock backtest {r.from} to {r.to} · {r.symbols} symbols · luck bar {r.luckBar.toFixed(2)}{rv ? ` · in-play backtest ${rv.from} to ${rv.to} on ${rv.resolution === "1Min" ? "one" : "five"}-minute bars` : ""}</span> : null}>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-xs uppercase tracking-wide text-muted">
@@ -121,6 +121,11 @@ export default async function DayTradePage({ searchParams }: { searchParams: Pro
             <h2 className="text-base font-semibold">{s.name} <span className="num text-xs font-normal text-muted">{s.version}</span></h2>
             <p className="mt-1 text-sm text-muted">{s.summary}</p>
             <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{s.rules.map((x) => <li key={x}>{x}</li>)}</ul>
+            {s.id === RVOL_ORB.id && rv && rv.resolution !== "1Min" && (
+              <div className="mt-3 rounded border border-warn bg-warn-soft px-3 py-2 text-xs text-warn">
+                This result was followed on five-minute bars, which count every close stop as hit before the breakout. Run the stocks-in-play backtest again for the one-minute version.
+              </div>
+            )}
             {s.deviations.length > 0 && (
               <div className="mt-3 rounded bg-bg px-3 py-2 text-xs text-muted">
                 <div className="font-medium text-ink">Where this differs from the published research</div>

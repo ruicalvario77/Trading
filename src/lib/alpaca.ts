@@ -140,7 +140,7 @@ export type IntradayBar = { ts: number; o: number; h: number; l: number; c: numb
  * when the free plan's 200 requests a minute is reached.
  */
 export async function getIntradayBars(
-  symbolList: string[], start: string, end: string, keep: (ts: number) => boolean = () => true,
+  symbolList: string[], start: string, end: string, keep: (ts: number) => boolean = () => true, timeframe: "1Min" | "5Min" = "5Min",
 ): Promise<Record<string, IntradayBar[]>> {
   const out: Record<string, IntradayBar[]> = {};
   const latest = Date.now() - 20 * 60_000;
@@ -149,7 +149,7 @@ export async function getIntradayBars(
     const syms = symbolList.slice(i, i + 100).join(",");
     let token: string | null = null;
     do {
-      const params = new URLSearchParams({ symbols: syms, timeframe: "5Min", start, end: safeEnd, limit: "10000", adjustment: "split", feed: DATA_FEED, sort: "asc" });
+      const params = new URLSearchParams({ symbols: syms, timeframe, start, end: safeEnd, limit: "10000", adjustment: "split", feed: DATA_FEED, sort: "asc" });
       if (token) params.set("page_token", token);
       let page: { bars: Record<string, RawBar[]> | null; next_page_token: string | null } | null = null;
       for (let attempt = 0; attempt < 6 && !page; attempt++) {

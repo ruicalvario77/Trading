@@ -60,6 +60,8 @@ export type IntradaySetupResult = {
 export type IntradayResults = {
   /** "core" for the per-session setups, "rvol" for the stocks-in-play breakout. Missing means core. */
   kind?: "core" | "rvol";
+  /** Bar size the trades were followed on. Missing means five-minute bars. */
+  resolution?: "1Min" | "5Min";
   from: string;
   to: string;
   months: number;

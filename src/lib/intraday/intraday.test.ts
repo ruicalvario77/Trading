@@ -110,3 +110,17 @@ test("stocks in play: open time, ranking, context and the trade", async () => {
   const red = session(day("2026-12-01", (k) => 50 - k * 0.05));
   assert.equal(runRvolOrb(red, 2), null, "red first bar is not traded long");
 });
+
+test("stocks in play on one-minute bars: a dip before the breakout no longer counts as a stop", async () => {
+  const { runRvolOrb } = await import("./setups");
+  // First five one-minute bars: high 50.25, so the trigger is 50.26 and the stop 50.06 (10% of a $2 ATR).
+  // Minute 6 dips to 49.90 (below the stop) and recovers; minute 7 breaks out with its low above the stop.
+  const mk = (i: number, o: number, h: number, l: number, c: number) => ({ ts: 0, m: 570 + i, o, h, l, c, v: 1000 });
+  const bars = [mk(0, 50, 50.1, 49.95, 50.05), mk(1, 50.05, 50.15, 50, 50.1), mk(2, 50.1, 50.2, 50.05, 50.15), mk(3, 50.15, 50.25, 50.1, 50.2), mk(4, 50.2, 50.22, 50.15, 50.2),
+    mk(5, 50.2, 50.2, 49.9, 50.15), mk(6, 50.15, 50.4, 50.12, 50.35)];
+  for (let i = 7; i < 390; i++) bars.push(mk(i, 50.35 + (i - 7) * 0.003, 50.36 + (i - 7) * 0.003, 50.34 + (i - 7) * 0.003, 50.35 + (i - 7) * 0.003));
+  const t = runRvolOrb({ symbol: "X", date: "2026-12-01", bars, prevClose: 50, orVolAvg: null }, 2)!;
+  assert.equal(t.entryM, 576, "entered on the minute that broke out, after the dip");
+  assert.equal(t.reason, "close");
+  assert.ok(t.r > 0);
+});

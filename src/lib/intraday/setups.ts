@@ -178,13 +178,20 @@ export const RVOL_ORB = {
   ],
 };
 
-/** The trade for one in-play stock. `atr` is its 14-day daily ATR up to the previous close. */
+/**
+ * The trade for one in-play stock. `atr` is its 14-day daily ATR up to the previous close. Works on bars of any
+ * size: the opening bar is built from everything in the first five minutes, and the trade is followed bar by
+ * bar after that. One-minute bars are used in practice, because the stop is close enough that five-minute bars
+ * cannot show whether a dip came before or after the breakout.
+ */
 export function runRvolOrb(s: Session, atr: number): ITrade | null {
   const b = s.bars;
-  const f = b[0];
-  if (!f || f.m !== OPEN_M || !(f.c > f.o)) return null;
+  const firstBars = b.filter((x) => x.m < OPEN_M + 5);
+  if (!firstBars.length || firstBars[0].m !== OPEN_M) return null;
+  const f = { o: firstBars[0].o, c: firstBars[firstBars.length - 1].c, h: Math.max(...firstBars.map((x) => x.h)) };
+  if (!(f.c > f.o)) return null;
   const trigger = f.h + 0.01;
-  for (let k = 1; k < b.length; k++) {
+  for (let k = firstBars.length; k < b.length; k++) {
     if (b[k].h < trigger) continue;
     const entry = Math.max(trigger, b[k].o);
     const stop = entry - 0.1 * atr;

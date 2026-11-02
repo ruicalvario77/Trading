@@ -55,7 +55,8 @@ export async function rvolDay(symbols: string[], date: string, ctx: Map<string, 
   for (const [s, bars] of Object.entries(raw)) first[s] = bars.find((b) => b.ts === open);
   const picks = pickInPlay(first, ctx, date);
   if (!picks.length) return { picks, trades: [] };
-  const full = await getIntradayBars(picks, new Date(open).toISOString(), new Date(open + 390 * 60_000).toISOString(), inSession);
+  // One-minute bars for the 20 picks: 20 x 390 bars fits in one request, the same cost as five-minute bars.
+  const full = await getIntradayBars(picks, new Date(open).toISOString(), new Date(open + 390 * 60_000).toISOString(), inSession, "1Min");
   const trades: ITrade[] = [];
   for (const s of picks) {
     const sess = buildSessions(s, full[s] ?? []).find((x) => x.date === date);
@@ -86,7 +87,7 @@ export async function runRvolResearch(months: number): Promise<number> {
   const days = await mapPool(dates, 2, (d) => rvolDay(symbols, d, ctx));
   const trades = days.flatMap((d) => d.trades);
   const results: IntradayResults = {
-    kind: "rvol", from: dates[0] ?? from, to: dates[dates.length - 1] ?? from, months, symbols: symbols.length, sessions: days.reduce((a, d) => a + d.picks.length, 0),
+    kind: "rvol", resolution: "1Min", from: dates[0] ?? from, to: dates[dates.length - 1] ?? from, months, symbols: symbols.length, sessions: days.reduce((a, d) => a + d.picks.length, 0),
     luckBar: luckBarT(INTRADAY_SETUP_COUNT), setups: [intradaySetupResult(RVOL_ORB.id, RVOL_ORB.version, trades)],
   };
   const [row] = await db.insert(schema.intradayRuns).values({ results }).returning({ id: schema.intradayRuns.id });
