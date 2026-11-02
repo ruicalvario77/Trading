@@ -253,6 +253,13 @@ export const intradayDays = pgTable("intraday_days", {
   trades: integer("trades").notNull(),
 });
 
+export const intradayRvolDays = pgTable("intraday_rvol_days", {
+  date: date("date").primaryKey(),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  picks: integer("picks").notNull(),
+  trades: integer("trades").notNull(),
+});
+
 export const jobRuns = pgTable("job_runs", {
   id: serial("id").primaryKey(),
   job: text("job").notNull(),

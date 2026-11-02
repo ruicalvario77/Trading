@@ -6,6 +6,7 @@ import { applyTimeStops, placeApproved, syncTrades } from "./orders";
 import { loadSettings } from "../settings";
 import { loopDaily } from "../loop/run";
 import { recordIntradayForward } from "../intraday/run";
+import { recordRvolForward } from "../intraday/rvol";
 
 export type JobName = "after-close" | "pre-open";
 
@@ -31,7 +32,9 @@ export async function runJob(job: JobName): Promise<{ ok: boolean; summary?: unk
       // Replays yesterday's session with the intraday setups. It must never stop order placement.
       let intraday: unknown;
       try { intraday = await recordIntradayForward(); } catch (e) { intraday = { error: e instanceof Error ? e.message : String(e) }; }
-      summary = { sync, place, intraday };
+      let inPlay: unknown;
+      try { inPlay = await recordRvolForward(); } catch (e) { inPlay = { error: e instanceof Error ? e.message : String(e) }; }
+      summary = { sync, place, intraday, inPlay };
     }
     await db.update(schema.jobRuns).set({ ok: true, finishedAt: new Date(), summary }).where(eq(schema.jobRuns.id, run.id));
     return { ok: true, summary, runId: run.id };

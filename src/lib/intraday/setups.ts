@@ -134,7 +134,68 @@ export const INTRADAY_SETUPS: IntradaySetup[] = [
       return null;
     },
   },
+  {
+    id: "last-half", version: "v1", name: "Last half hour momentum, index ETFs",
+    summary: "When an index ETF is up from yesterday's close at 10:00, buy at 15:30 and sell at the close (after Gao, Han, Li and Zhou, 2018).",
+    rules: [
+      "Only SPY, QQQ, IWM and DIA.",
+      "The first half hour's return is measured from the previous close to 10:00 New York time.",
+      "If it is positive, buy at the 15:30 open and sell at the close. Long only; the research also sold when it was negative.",
+      "Risk is measured against a 0.5% stop below the entry, which is rarely reached in half an hour. Days that close early are skipped.",
+    ],
+    run: (s) => {
+      if (!INDEX_ETFS.includes(s.symbol) || !s.prevClose) return null;
+      const b = s.bars;
+      const at10 = b.find((x) => x.m === 9 * 60 + 55);
+      const k = b.findIndex((x) => x.m === 15 * 60 + 30);
+      if (!at10 || k < 0 || !(at10.c / s.prevClose - 1 > 0)) return null;
+      const entry = b[k].o;
+      return followLong(s, "last-half", k, entry, entry * 0.995, null, true);
+    },
+  },
 ];
+
+/**
+ * Opening range breakout on stocks in play (after Zarattini, Barbon and Aziz, 2024). It needs a ranking of the
+ * whole market each morning and each stock's daily ATR, so it runs in its own pipeline (see rvol.ts) rather than
+ * per session like the setups above. The trade itself is simulated here.
+ */
+export const RVOL_ORB = {
+  id: "orb-rvol",
+  version: "v1",
+  name: "Five-minute breakout, top 20 stocks in play",
+  summary: "Each morning, the 20 stocks with the most unusual opening volume; buy those whose first five minutes closed up, as they break that bar's high.",
+  rules: [
+    "Universe: the 500 most traded stocks and ETFs over $5 with at least 1 million shares a day and a daily ATR of at least $0.50.",
+    "Rank by first five-minute volume divided by the stock's average daily volume over the previous 14 days. Keep the top 20.",
+    "Trade only those whose first five-minute bar closed above its open (long only; the research also shorted the red ones).",
+    "Buy on a rise above that bar's high, any time in the session. Stop 10% of the 14-day ATR below the entry. No target: sold at the close.",
+  ],
+  deviations: [
+    "Relative volume uses average daily volume, not the average first five minutes, because only daily history is stored.",
+    "The 500 most traded symbols, not the whole market, to stay within the free data plan's request limits.",
+    "Long only, and 0.05% cost each side; the research used tighter cost assumptions.",
+  ],
+};
+
+/** The trade for one in-play stock. `atr` is its 14-day daily ATR up to the previous close. */
+export function runRvolOrb(s: Session, atr: number): ITrade | null {
+  const b = s.bars;
+  const f = b[0];
+  if (!f || f.m !== OPEN_M || !(f.c > f.o)) return null;
+  const trigger = f.h + 0.01;
+  for (let k = 1; k < b.length; k++) {
+    if (b[k].h < trigger) continue;
+    const entry = Math.max(trigger, b[k].o);
+    const stop = entry - 0.1 * atr;
+    if ((entry - stop) / entry < 0.001) return null;
+    return followLong(s, RVOL_ORB.id, k, entry, stop, null, false);
+  }
+  return null;
+}
+
+/** Index ETFs for the last-half-hour setup. */
+export const INDEX_ETFS = ["SPY", "QQQ", "IWM", "DIA"];
 
 export function intradaySetupById(id: string) {
   return INTRADAY_SETUPS.find((s) => s.id === id);

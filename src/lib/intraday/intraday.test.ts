@@ -74,3 +74,39 @@ test("gap and go and VWAP stretch fire only when their conditions hold", () => {
   const flat = session(day("2026-12-01", () => 100));
   assert.equal(INTRADAY_SETUPS.find((x) => x.id === "vwap-stretch")!.run(flat), null);
 });
+
+test("last half hour: buys index ETFs at 15:30 only when up at 10:00, sells at the close", async () => {
+  const { INTRADAY_SETUPS: S } = await import("./setups");
+  const lh = S.find((x) => x.id === "last-half")!;
+  // Up at 10:00, then a 1.5% rise in the last half hour (more than the 0.1% round-trip cost).
+  const up = session(day("2026-12-01", (k) => (k < 72 ? 101 + k * 0.01 : 101.72 + (k - 72) * 0.3)), { symbol: "SPY", prevClose: 100 });
+  const t = lh.run(up)!;
+  assert.equal(t.entryM, 930);
+  assert.equal(t.reason, "close");
+  assert.ok(t.r > 0);
+  assert.equal(lh.run(session(day("2026-12-01", (k) => 99 + k * 0.01), { symbol: "SPY", prevClose: 100 })), null, "down at 10:00");
+  assert.equal(lh.run(session(day("2026-12-01", (k) => 101 + k * 0.01), { symbol: "AAPL", prevClose: 100 })), null, "index ETFs only");
+  assert.equal(lh.run(session(day("2026-12-01", (k) => 101).slice(0, 42), { symbol: "SPY", prevClose: 100 })), null, "early close skipped");
+});
+
+test("stocks in play: open time, ranking, context and the trade", async () => {
+  const { openUtc, pickInPlay, dailyContext } = await import("./rvol");
+  const { runRvolOrb } = await import("./setups");
+  assert.equal(new Date(openUtc("2026-07-15")).toISOString(), "2026-07-15T13:30:00.000Z");
+  assert.equal(new Date(openUtc("2026-12-01")).toISOString(), "2026-12-01T14:30:00.000Z");
+  const daily = new Map([["A", Array.from({ length: 20 }, (_, i) => ({ date: `2026-11-${String(i + 1).padStart(2, "0")}`, open: 50, high: 51, low: 49, close: 50, volume: 2_000_000 }))]]);
+  const ctx = dailyContext(daily);
+  assert.deepEqual(ctx.get("A")!.get("2026-11-20"), { atr: 2, vol14: 2_000_000 }, "as of the previous close");
+  const bar = (v: number, o = 50) => ({ ts: 0, o, h: o + 0.5, l: o - 0.5, c: o + 0.2, v });
+  const ctxMany = new Map(["A", "B", "C", "D"].map((s) => [s, new Map([["2026-11-20", { atr: s === "D" ? 0.3 : 2, vol14: 2_000_000 }]])]));
+  const picks = pickInPlay({ A: bar(100_000), B: bar(400_000), C: bar(300_000, 4), D: bar(900_000) }, ctxMany, "2026-11-20");
+  assert.deepEqual(picks, ["B", "A"], "C is under $5, D's ATR is under $0.50");
+  const s = session(day("2026-12-01", (k) => 50 + k * 0.05));
+  s.bars[0] = { ...s.bars[0], o: 50, h: 50.1, l: 49.9, c: 50.05 };
+  const t = runRvolOrb(s, 2)!;
+  assert.ok(Math.abs(t.stop - (t.entry / 1.0005 - 0.2)) < 0.01, "stop 10% of ATR below entry");
+  assert.equal(t.reason, "close");
+  assert.ok(t.r > 0);
+  const red = session(day("2026-12-01", (k) => 50 - k * 0.05));
+  assert.equal(runRvolOrb(red, 2), null, "red first bar is not traded long");
+});

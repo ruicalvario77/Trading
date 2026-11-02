@@ -6,7 +6,11 @@ import { mapPool } from "../backtest/data";
 import { summarizeR, type RStats } from "../stats";
 import { dailyT, judge, luckBarT, type SetupVerdict } from "../setups/engine";
 import { buildSessions, inSession, type Session } from "./session";
-import { INTRADAY_SETUPS, type ITrade } from "./setups";
+import { INTRADAY_SETUPS, INDEX_ETFS, RVOL_ORB, type ITrade } from "./setups";
+
+/** Every intraday setup ever tested counts toward the luck bar, including the stocks-in-play breakout. */
+export const INTRADAY_SETUP_COUNT = INTRADAY_SETUPS.length + 1;
+export const ALL_INTRADAY = [...INTRADAY_SETUPS.map((s) => ({ id: s.id, version: s.version })), { id: RVOL_ORB.id, version: RVOL_ORB.version }];
 
 /** The day-trading universe: the most traded stocks and ETFs, where spreads are a cent and fills are reliable. */
 export const DAY_SYMBOLS = 60;
@@ -20,7 +24,7 @@ export async function dayUniverse(db: Db): Promise<string[]> {
     .orderBy(desc(schema.symbols.avgDollarVolume))
     .limit(DAY_SYMBOLS);
   const list = rows.map((r) => r.s);
-  if (!list.includes("SPY")) list.push("SPY");
+  for (const s of INDEX_ETFS) if (!list.includes(s)) list.push(s);
   return list;
 }
 
@@ -54,6 +58,8 @@ export type IntradaySetupResult = {
 };
 
 export type IntradayResults = {
+  /** "core" for the per-session setups, "rvol" for the stocks-in-play breakout. Missing means core. */
+  kind?: "core" | "rvol";
   from: string;
   to: string;
   months: number;
@@ -62,6 +68,30 @@ export type IntradayResults = {
   luckBar: number;
   setups: IntradaySetupResult[];
 };
+
+/** Statistics for one setup's trades, shared by both pipelines. */
+export function intradaySetupResult(id: string, version: string, ts: ITrade[]): IntradaySetupResult {
+  ts = [...ts].sort((a, b) => a.date.localeCompare(b.date) || a.entryM - b.entryM);
+  const dates = ts.map((t) => t.date);
+  const mid = dates.length ? new Date((Date.parse(dates[0]) + Date.parse(dates[dates.length - 1])) / 2).toISOString().slice(0, 10) : "";
+  const group = (key: (t: ITrade) => string) => {
+    const m = new Map<string, number[]>();
+    for (const t of ts) (m.get(key(t)) ?? m.set(key(t), []).get(key(t))!).push(t.r);
+    return [...m].sort(([a], [b]) => a.localeCompare(b)).map(([k, rs]) => ({ k, trades: rs.length, avgR: rs.reduce((a, b) => a + b, 0) / rs.length }));
+  };
+  const edge = summarizeR(ts.map((t) => t.r));
+  const { t, days } = dailyT(ts.map((x) => ({ entryDate: x.date, r: x.r })));
+  const earlier = summarizeR(ts.filter((x) => x.date < mid).map((x) => x.r));
+  const later = summarizeR(ts.filter((x) => x.date >= mid).map((x) => x.r));
+  const exits: Record<string, number> = {};
+  for (const x of ts) exits[x.reason] = (exits[x.reason] ?? 0) + 1;
+  return {
+    id, version, edge, t, days, earlier, later, verdict: judge(edge, t, earlier, later, INTRADAY_SETUP_COUNT), exits,
+    byEntryHour: group((x) => String(Math.floor(x.entryM / 60)).padStart(2, "0")).map(({ k, ...r }) => ({ hour: `${k}:00`, ...r })),
+    perMonth: group((x) => x.date.slice(0, 7)).map(({ k, ...r }) => ({ month: k, ...r })),
+    recent: ts.slice(-12).reverse(),
+  };
+}
 
 /** Every intraday setup on every session from `from`, without the database. */
 export function computeIntraday(sessions: Map<string, Session[]>, from: string, months: number): IntradayResults {
@@ -81,31 +111,9 @@ export function computeIntraday(sessions: Map<string, Session[]>, from: string, 
       }
     }
   }
-  const mid = new Date((Date.parse(first) + Date.parse(last)) / 2).toISOString().slice(0, 10);
-  const group = (ts: ITrade[], key: (t: ITrade) => string) => {
-    const m = new Map<string, number[]>();
-    for (const t of ts) (m.get(key(t)) ?? m.set(key(t), []).get(key(t))!).push(t.r);
-    return [...m].sort(([a], [b]) => a.localeCompare(b)).map(([k, rs]) => ({ k, trades: rs.length, avgR: rs.reduce((a, b) => a + b, 0) / rs.length }));
-  };
   return {
-    from: first, to: last, months, symbols: sessions.size, sessions: count, luckBar: luckBarT(INTRADAY_SETUPS.length),
-    setups: INTRADAY_SETUPS.map((s) => {
-      const ts = trades.get(s.id)!.sort((a, b) => a.date.localeCompare(b.date) || a.entryM - b.entryM);
-      const edge = summarizeR(ts.map((t) => t.r));
-      const { t, days } = dailyT(ts.map((x) => ({ entryDate: x.date, r: x.r })));
-      const earlier = summarizeR(ts.filter((x) => x.date < mid).map((x) => x.r));
-      const later = summarizeR(ts.filter((x) => x.date >= mid).map((x) => x.r));
-      const exits: Record<string, number> = {};
-      for (const x of ts) exits[x.reason] = (exits[x.reason] ?? 0) + 1;
-      return {
-        id: s.id, version: s.version, edge, t, days, earlier, later,
-        verdict: judge(edge, t, earlier, later, INTRADAY_SETUPS.length),
-        exits,
-        byEntryHour: group(ts, (x) => String(Math.floor(x.entryM / 60)).padStart(2, "0")).map(({ k, ...r }) => ({ hour: `${k}:00`, ...r })),
-        perMonth: group(ts, (x) => x.date.slice(0, 7)).map(({ k, ...r }) => ({ month: k, ...r })),
-        recent: ts.slice(-12).reverse(),
-      };
-    }),
+    kind: "core", from: first, to: last, months, symbols: sessions.size, sessions: count, luckBar: luckBarT(INTRADAY_SETUP_COUNT),
+    setups: INTRADAY_SETUPS.map((s) => intradaySetupResult(s.id, s.version, trades.get(s.id)!)),
   };
 }
 
@@ -167,7 +175,7 @@ export async function intradayForwardStats(db: Db): Promise<{ stats: IntradayFor
   const [d] = await db.select({ n: sql<number>`count(*)::int`, a: sql<string | null>`min(${schema.intradayDays.date})`, b: sql<string | null>`max(${schema.intradayDays.date})` }).from(schema.intradayDays);
   return {
     daysRecorded: d.n, firstDay: d.a, lastDay: d.b,
-    stats: INTRADAY_SETUPS.map((s) => {
+    stats: ALL_INTRADAY.map((s) => {
       const mine = rows.filter((r) => r.setup === s.id && r.version === s.version).sort((a, b) => a.date.localeCompare(b.date) || a.entryM - b.entryM);
       const { t, days } = dailyT(mine.map((r) => ({ entryDate: r.date, r: r.r })));
       return { id: s.id, version: s.version, trades: summarizeR(mine.map((r) => r.r)), t, days };

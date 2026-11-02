@@ -248,6 +248,12 @@ const statements = [
     symbols integer NOT NULL,
     trades integer NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS intraday_rvol_days (
+    date date PRIMARY KEY,
+    recorded_at timestamptz NOT NULL DEFAULT now(),
+    picks integer NOT NULL,
+    trades integer NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS job_runs (
     id serial PRIMARY KEY,
     job text NOT NULL,
